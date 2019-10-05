@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-import tqdm
+from tqdm import tqdm
 
 class Net(nn.Module):
   def __init__(self):
@@ -24,19 +24,64 @@ class Net(nn.Module):
     x = self.fc2(x)
     return F.log_softmax(x, dim=1)
   
+class InputLMLoss(torch.Function):
+
+  @staticmethod
+  def forward(ctx, input, target,gradqnorm):
+    # input and target are shape (batch,logits)
+    # gradqnorm is scalar
+    bsize,nlogits = input.shape
+    for b in range(bsize):
+      logits = input[b]
+      desired = target[b] #one-hot
+      grad_wrt_x = 
+      # right now just do sum
+      torch.sum()
+
+    ctx.save_for_backward(input, target)
+    output = input.mm(weight.t())
+    if bias is not None:
+        output += bias.unsqueeze(0).expand_as(output)
+    return output
+
+  @staticmethod
+  def backward(ctx, grad_output):
+    # This is a pattern that is very convenient - at the top of backward
+    # unpack saved_tensors and initialize all gradients w.r.t. inputs to
+    # None. Thanks to the fact that additional trailing Nones are
+    # ignored, the return statement is simple even when the function has
+    # optional inputs.
+    input, weight, bias = ctx.saved_tensors
+    grad_input = grad_weight = grad_bias = None
+
+    # These needs_input_grad checks are optional and there only to
+    # improve efficiency. If you want to make your code simpler, you can
+    # skip them. Returning gradients for inputs that don't require it is
+    # not an error.
+    if ctx.needs_input_grad[0]:
+        grad_input = grad_output.mm(weight)
+    if ctx.needs_input_grad[1]:
+        grad_weight = grad_output.t().mm(input)
+    if bias is not None and ctx.needs_input_grad[2]:
+        grad_bias = grad_output.sum(0).squeeze(0)
+
+    return grad_input, grad_weight, grad_bias
+
+
 def train(args, model, device, train_loader, optimizer, epoch):
   model.train()
-  for batch_idx, (data, target) in enumerate(train_loader):
+  # for batch_idx, (data, target) in tqdm(enumerate(train_loader)):
+  for (data, target) in tqdm((train_loader)):
     data, target = data.to(device), target.to(device)
     optimizer.zero_grad()
     output = model(data)
     loss = F.nll_loss(output, target)
     loss.backward()
     optimizer.step()
-    if batch_idx % args.log_interval == 0:
-      print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-        epoch, batch_idx * len(data), len(train_loader.dataset),
-        100. * batch_idx / len(train_loader), loss.item()))
+    # if batch_idx % args.log_interval == 0:
+    #   print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+    #     epoch, batch_idx * len(data), len(train_loader.dataset),
+    #     100. * batch_idx / len(train_loader), loss.item()))
 
 def test(args, model, device, test_loader):
   model.eval()
