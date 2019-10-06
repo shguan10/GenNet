@@ -6,6 +6,8 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
+import pdb
+
 class Net(nn.Module):
   def __init__(self):
     super(Net, self).__init__()
@@ -34,7 +36,7 @@ class InputLMLoss(torch.Function):
     for b in range(bsize):
       logits = input[b]
       desired = target[b] #one-hot
-      grad_wrt_x = 
+      # grad_wrt_x = 
       # right now just do sum
       torch.sum()
 
@@ -67,6 +69,57 @@ class InputLMLoss(torch.Function):
 
     return grad_input, grad_weight, grad_bias
 
+
+def im2col():
+  stride = (1, 1)
+  kernel_size = (3, 3,4)
+  inch,rows,cols = x.shape
+  newr = rows +1 - kernel_size[0]
+  newc = cols +1 - kernel_size[1]
+  
+  x = torch.arange(0, 25).resize_(1,5, 5)
+  # assumes x is shape (...,inch,rows,cols)
+  x = x.transpose(-1,-3)
+  x = x.unfold(1, kernel_size[1], stride[1])
+  x = x.unfold(0,kernel_size[0],stride[0])
+  x = x.contiguous().view(newr*newc,-1)
+
+def im2col(x):
+  """
+  Assumes x is shape (...,inch,row,col)
+  and requires grad
+  """
+  inch,rows,cols = x.shape[-3:]
+
+  newr = rows +1 - self.kshape[0]
+  newc = cols +1 - self.kshape[1]
+  xshape = x.shape
+  x = x.transpose(-1,-3)
+  x = x.unfold(len(xshape)-2, self.kshape[1], stride[1])
+  x = x.unfold(len(xshape)-3,self.kshape[0],stride[0])
+  x = x.contiguous().view(*xshape[:-3],newr*newc,-1)
+
+class FoldConv2d(nn.Module):
+  def __init__(self,inch,outch,kshape,stride=1):
+    nn.Module.__init__(self)
+    k=1
+    for j in kshape: k*=j
+    self.kernel = nn.parameter.Parameter(torch.Tensor(inch*k,outch))
+    self.kshape = kshape
+    self.reset_parameters()
+    
+  def reset_parameters(self):
+    torch.nn.init.kaiming_uniform_(self.kernel, a=np.sqrt(5))
+    
+  def forward(self,x):
+    return x @ self.kernel
+
+def get_jacobian(net, x, noutputs):
+  x = x.repeat(noutputs, 1)
+  x.requires_grad_(True)
+  y = net.forward(x)
+  y.backward(torch.eye(noutputs))
+  return x.grad.data
 
 def train(args, model, device, train_loader, optimizer, epoch):
   model.train()
@@ -158,5 +211,29 @@ def main():
   if (args.save_model):
     torch.save(model.state_dict(),"mnist_cnn.pt")
     
+
+def testJ():
+  use_cuda = False
+
+  device = torch.device("cuda" if use_cuda else "cpu")
+
+  kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
+  train_loader = torch.utils.data.DataLoader(
+    datasets.MNIST('../../data', train=True, download=True,
+             transform=transforms.Compose([
+               transforms.ToTensor(),
+               transforms.Normalize((0.1307,), (0.3081,))
+             ])),
+    batch_size=1, shuffle=True, **kwargs)
+
+  model = ENet().to(device)
+  model.train()
+  for (data, target) in tqdm((train_loader)):
+    data, target = data.to(device), target.to(device)
+    output = model.get_jacobian(data,[10])
+    # pdb.set_trace()
+  
+
 if __name__ == '__main__':
-  main()
+  # main()
+  testJ()
