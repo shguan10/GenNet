@@ -7,12 +7,15 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 
 import pdb
+import numpy as np
 
 class Net(nn.Module):
   def __init__(self):
     super(Net, self).__init__()
-    self.conv1 = nn.Conv2d(1, 20, 5, 1)
-    self.conv2 = nn.Conv2d(20, 50, 5, 1)
+    # self.conv1 = FoldedConv2d(1, 20, [5,5])
+    self.conv1 = nn.Conv2d(1, 20, [5,5])
+    # self.conv2 = FoldedConv2d(20, 50, [5,5])
+    self.conv2 = nn.Conv2d(20, 50, [5,5])
     self.fc1 = nn.Linear(4*4*50, 500)
     self.fc2 = nn.Linear(500, 10)
 
@@ -25,7 +28,12 @@ class Net(nn.Module):
     x = F.relu(self.fc1(x))
     x = self.fc2(x)
     return F.log_softmax(x, dim=1)
-  
+
+  def __foldedmax_pool2d(self,x,k,s,):
+    x = x.transpose(-1,-2).contiguous()
+    x = x.view(-1,)
+    return F.max_pool2d(x,k,s)
+
 class InputLMLoss(torch.Function):
 
   @staticmethod
@@ -69,35 +77,52 @@ class InputLMLoss(torch.Function):
 
     return grad_input, grad_weight, grad_bias
 
-def im2col(x):
+def im2col(x,kshape,stride):
   """
   Assumes x is shape (...,inch,row,col)
-  and requires grad
+  output shape (..., newRow*newCols, kshape[0]*kshape[1]*inch)
   """
   inch,rows,cols = x.shape[-3:]
 
-  newr = rows +1 - self.kshape[0]
-  newc = cols +1 - self.kshape[1]
   xshape = x.shape
   x = x.transpose(-1,-3)
-  x = x.unfold(len(xshape)-2, self.kshape[1], stride[1])
-  x = x.unfold(len(xshape)-3,self.kshape[0],stride[0])
-  x = x.contiguous().view(*xshape[:-3],newr*newc,-1)
+  x = x.unfold(len(xshape)-2, kshape[1],stride[1])
+  x = x.unfold(len(xshape)-3,kshape[0],stride[0])
+  x = x.contiguous().view(*xshape[:-3],-1,
+                          kshape[0]*kshape[1]*inch)
+  return x
 
-class FoldConv2d(nn.Module):
-  def __init__(self,inch,outch,kshape,stride=1):
+def col2im(x,nRows,nCols):
+  """
+  Assumes x is shape (..., nRows*nCols, inch)
+  output shape (...,inch,nRows,nCols)
+  """
+  xshape = x.shape
+  x = x.transpose(-1,-2).contiguous()
+  x = x.view(*xshape[:-2],-1,nRows,nCols)
+  return x
+
+class FoldedConv2d(nn.Module):
+  def __init__(self,inch,outch,kshape,stride=[1,1]):
     nn.Module.__init__(self)
     k=1
     for j in kshape: k*=j
     self.kernel = nn.parameter.Parameter(torch.Tensor(inch*k,outch))
     self.kshape = kshape
+    self.stride = stride
     self.reset_parameters()
     
   def reset_parameters(self):
     torch.nn.init.kaiming_uniform_(self.kernel, a=np.sqrt(5))
     
   def forward(self,x):
-    return x @ self.kernel
+    xshape = x.shape
+    x = im2col(x,self.kshape,self.stride)
+    x = x @ self.kernel
+    nRows = int((xshape[-2]-(self.kshape[0]-1)-1)/self.stride[0]) +1
+    nCols = int((xshape[-1]-(self.kshape[1]-1)-1)/self.stride[1]) +1
+    x = col2im(x,nRows,nCols)
+    return x
 
 def get_jacobian(net, x, noutputs):
   x = x.repeat(noutputs, 1)
@@ -209,16 +234,16 @@ def testJ():
                transforms.ToTensor(),
                transforms.Normalize((0.1307,), (0.3081,))
              ])),
-    batch_size=1, shuffle=True, **kwargs)
+    batch_size=32, shuffle=True, **kwargs)
 
-  model = ENet().to(device)
+  model = Net().to(device)
   model.train()
   for (data, target) in tqdm((train_loader)):
     data, target = data.to(device), target.to(device)
-    output = model.get_jacobian(data,[10])
-    # pdb.set_trace()
+    data.requires_grad_()
+    output = model.forward(data)
   
 
 if __name__ == '__main__':
-  # main()
-  testJ()
+  main()
+  # testJ()
