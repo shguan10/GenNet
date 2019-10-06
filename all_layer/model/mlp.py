@@ -69,21 +69,6 @@ class InputLMLoss(torch.Function):
 
     return grad_input, grad_weight, grad_bias
 
-
-def im2col():
-  stride = (1, 1)
-  kernel_size = (3, 3,4)
-  inch,rows,cols = x.shape
-  newr = rows +1 - kernel_size[0]
-  newc = cols +1 - kernel_size[1]
-  
-  x = torch.arange(0, 25).resize_(1,5, 5)
-  # assumes x is shape (...,inch,rows,cols)
-  x = x.transpose(-1,-3)
-  x = x.unfold(1, kernel_size[1], stride[1])
-  x = x.unfold(0,kernel_size[0],stride[0])
-  x = x.contiguous().view(newr*newc,-1)
-
 def im2col(x):
   """
   Assumes x is shape (...,inch,row,col)
