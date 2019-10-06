@@ -12,10 +12,10 @@ import numpy as np
 class Net(nn.Module):
   def __init__(self):
     super(Net, self).__init__()
-    # self.conv1 = FoldedConv2d(1, 20, [5,5])
-    self.conv1 = nn.Conv2d(1, 20, [5,5])
-    # self.conv2 = FoldedConv2d(20, 50, [5,5])
-    self.conv2 = nn.Conv2d(20, 50, [5,5])
+    self.conv1 = FoldedConv2d(1, 20, [5,5],pre=False)
+    # self.conv1 = nn.Conv2d(1, 20, [5,5])
+    self.conv2 = FoldedConv2d(20, 50, [5,5])
+    # self.conv2 = nn.Conv2d(20, 50, [5,5])
     self.fc1 = nn.Linear(4*4*50, 500)
     self.fc2 = nn.Linear(500, 10)
 
@@ -115,13 +115,15 @@ class FoldedConv2d(nn.Module):
   def reset_parameters(self):
     torch.nn.init.kaiming_uniform_(self.kernel, a=np.sqrt(5))
     
-  def forward(self,x):
+  def forward(self,x,preneed=True,postneed=True):
     xshape = x.shape
-    x = im2col(x,self.kshape,self.stride)
+    if preneed:
+      x = im2col(x,self.kshape,self.stride)
     x = x @ self.kernel
-    nRows = int((xshape[-2]-(self.kshape[0]-1)-1)/self.stride[0]) +1
-    nCols = int((xshape[-1]-(self.kshape[1]-1)-1)/self.stride[1]) +1
-    x = col2im(x,nRows,nCols)
+    if postneed:
+      nRows = int((xshape[-2]-(self.kshape[0]-1)-1)/self.stride[0]) +1
+      nCols = int((xshape[-1]-(self.kshape[1]-1)-1)/self.stride[1]) +1
+      x = col2im(x,nRows,nCols)
     return x
 
 def get_jacobian(net, x, noutputs):
@@ -220,7 +222,6 @@ def main():
 
   if (args.save_model):
     torch.save(model.state_dict(),"mnist_cnn.pt")
-    
 
 def testJ():
   use_cuda = False
@@ -241,9 +242,10 @@ def testJ():
   for (data, target) in tqdm((train_loader)):
     data, target = data.to(device), target.to(device)
     data.requires_grad_()
-    output = model.forward(data)
-  
+    pdb.set_trace()
+    output = get_jacobian(model,data,10)
+    print(output)  
 
 if __name__ == '__main__':
-  main()
-  # testJ()
+  # main()
+  testJ()
