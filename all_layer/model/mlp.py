@@ -9,13 +9,16 @@ from tqdm import tqdm
 import pdb
 import numpy as np
 
+EPS=1e-6
+GAMMA=.01
+
 class Net(nn.Module):
   def __init__(self):
     super(Net, self).__init__()
-    self.conv1 = FoldedConv2d(1, 20, [5,5],pre=False)
-    # self.conv1 = nn.Conv2d(1, 20, [5,5])
-    self.conv2 = FoldedConv2d(20, 50, [5,5])
-    # self.conv2 = nn.Conv2d(20, 50, [5,5])
+    # self.conv1 = FoldedConv2d(1, 20, [5,5])
+    self.conv1 = nn.Conv2d(1, 20, [5,5])
+    # self.conv2 = FoldedConv2d(20, 50, [5,5])
+    self.conv2 = nn.Conv2d(20, 50, [5,5])
     self.fc1 = nn.Linear(4*4*50, 500)
     self.fc2 = nn.Linear(500, 10)
 
@@ -28,54 +31,6 @@ class Net(nn.Module):
     x = F.relu(self.fc1(x))
     x = self.fc2(x)
     return F.log_softmax(x, dim=1)
-
-  def __foldedmax_pool2d(self,x,k,s,):
-    x = x.transpose(-1,-2).contiguous()
-    x = x.view(-1,)
-    return F.max_pool2d(x,k,s)
-
-class InputLMLoss(torch.Function):
-
-  @staticmethod
-  def forward(ctx, input, target,gradqnorm):
-    # input and target are shape (batch,logits)
-    # gradqnorm is scalar
-    bsize,nlogits = input.shape
-    for b in range(bsize):
-      logits = input[b]
-      desired = target[b] #one-hot
-      # grad_wrt_x = 
-      # right now just do sum
-      torch.sum()
-
-    ctx.save_for_backward(input, target)
-    output = input.mm(weight.t())
-    if bias is not None:
-        output += bias.unsqueeze(0).expand_as(output)
-    return output
-
-  @staticmethod
-  def backward(ctx, grad_output):
-    # This is a pattern that is very convenient - at the top of backward
-    # unpack saved_tensors and initialize all gradients w.r.t. inputs to
-    # None. Thanks to the fact that additional trailing Nones are
-    # ignored, the return statement is simple even when the function has
-    # optional inputs.
-    input, weight, bias = ctx.saved_tensors
-    grad_input = grad_weight = grad_bias = None
-
-    # These needs_input_grad checks are optional and there only to
-    # improve efficiency. If you want to make your code simpler, you can
-    # skip them. Returning gradients for inputs that don't require it is
-    # not an error.
-    if ctx.needs_input_grad[0]:
-        grad_input = grad_output.mm(weight)
-    if ctx.needs_input_grad[1]:
-        grad_weight = grad_output.t().mm(input)
-    if bias is not None and ctx.needs_input_grad[2]:
-        grad_bias = grad_output.sum(0).squeeze(0)
-
-    return grad_input, grad_weight, grad_bias
 
 def im2col(x,kshape,stride):
   """
@@ -126,12 +81,19 @@ class FoldedConv2d(nn.Module):
       x = col2im(x,nRows,nCols)
     return x
 
-def get_jacobian(net, x, noutputs):
-  x = x.repeat(noutputs, 1)
-  x.requires_grad_(True)
-  y = net.forward(x)
-  y.backward(torch.eye(noutputs))
-  return x.grad.data
+def get_out_and_jacobian(net, x, noutputs):
+  # net is vector valued
+  # first dimension of x is batch
+  xshape = x.shape
+  jac_x = x.repeat(noutputs, *[1 for x in xshape[1:]]).detach()
+  jac_x.requires_grad_()
+  y = net.forward(jac_x)
+  y=y.view(noutputs,xshape[0],y.shape[-1])
+  mask = torch.eye(noutputs).repeat(xshape[0],1,1)
+  mask = mask.transpose(0,1)
+  y.backward(mask,retain_graph=True)
+  j=jac_x.grad.data.view(noutputs,*xshape)
+  return y[0],j
 
 def train(args, model, device, train_loader, optimizer, epoch):
   model.train()
@@ -166,6 +128,40 @@ def test(args, model, device, test_loader):
     test_loss, correct, len(test_loader.dataset),
     100. * correct / len(test_loader.dataset)))
 
+def train_LM(args,model,device,train_loader,optimizer,epoch):
+  # for (data, target) in tqdm((train_loader)):
+  for (data, target) in (train_loader):
+    data, target = data.to(device), target.to(device)
+    optimizer.zero_grad() 
+    data.requires_grad_()
+    # bsize,indim,h,w = data.shape
+    preds,jac = get_out_and_jacobian(model,data,10)
+    loss=0
+    for k,yk in enumerate(target):
+      gk = jac[yk,k]
+      # pdb.set_trace()
+      pyk = preds[k,yk]
+      # sum across classes other than yk
+      for i in range(10):
+        if i==yk: break
+        gi = jac[i,k]
+        # pdb.set_trace()
+        # qnorm = lambda x: torch.max(x) # TODO implement another norm
+        denom = torch.max(gi - gk) + EPS
+        denom = denom.detach()
+        iloss = (yk - preds[k,i])/denom + GAMMA
+        iloss *= (iloss>0).float()
+        print(iloss)
+        loss += iloss
+    # pdb.set_trace()
+    print(loss)
+    # kloss = torch.mean(kloss)
+    # print("hi")
+    loss.backward()
+    # print("hi1")
+    optimizer.step()
+
+
 def main():
   # Training settings
   parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -188,6 +184,9 @@ def main():
   
   parser.add_argument('--save-model', action='store_true', default=False,
             help='For Saving the current Model')
+
+  parser.add_argument('--large-margin', action='store_true', default=False, 
+            help='use large-margin')
   args = parser.parse_args()
   use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -203,6 +202,7 @@ def main():
                transforms.Normalize((0.1307,), (0.3081,))
              ])),
     batch_size=args.batch_size, shuffle=True, **kwargs)
+
   test_loader = torch.utils.data.DataLoader(
     datasets.MNIST('../../data', train=False, transform=transforms.Compose([
                transforms.ToTensor(),
@@ -217,35 +217,15 @@ def main():
                         momentum=args.momentum)
 
   for epoch in range(1, args.epochs + 1):
-    train(args, model, device, train_loader, optimizer, epoch)
+    if args.large_margin:
+      train_LM(args, model, device, train_loader, optimizer, epoch)
+    else: 
+      train(args, model, device, train_loader, optimizer, epoch)
     test(args, model, device, test_loader)
 
   if (args.save_model):
     torch.save(model.state_dict(),"mnist_cnn.pt")
 
-def testJ():
-  use_cuda = False
-
-  device = torch.device("cuda" if use_cuda else "cpu")
-
-  kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
-  train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../../data', train=True, download=True,
-             transform=transforms.Compose([
-               transforms.ToTensor(),
-               transforms.Normalize((0.1307,), (0.3081,))
-             ])),
-    batch_size=32, shuffle=True, **kwargs)
-
-  model = Net().to(device)
-  model.train()
-  for (data, target) in tqdm((train_loader)):
-    data, target = data.to(device), target.to(device)
-    data.requires_grad_()
-    pdb.set_trace()
-    output = get_jacobian(model,data,10)
-    print(output)  
-
 if __name__ == '__main__':
-  # main()
-  testJ()
+  main()
+  # testJ()
