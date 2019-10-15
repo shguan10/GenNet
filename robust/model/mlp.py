@@ -11,7 +11,7 @@ import numpy as np
 
 EPS=1e-6
 GAMMA=.01
-JACRATE = 1
+JACRATE = 0
 
 class Net(nn.Module):
   def __init__(self,numlayers=2):
@@ -43,32 +43,22 @@ def trainFCN(args, model, device, train_loader, optimizer, epoch):
     output = model(data)
     loss = F.nll_loss(output, target)
     loss.backward(retain_graph=True)
-    # save the gradient calculated
-    # pdb.set_trace()
-    # calculate the Jacobian gradients as well
-    # choose a random output index and calculate the gradient wrt that
-    # for each layer l get the gradient
-    # and take sum of products
-    if JACRATE > 0:
-      lgs = [p.grad.clone().detach() for p in model.parameters()]
-      # zero the grad
-      zerograd(model)
-      chosen = (torch.rand(len(data))*10).int()
-      for bind,pi in enumerate(chosen):
-        mask = torch.zeros(output.shape)
-        mask[bind,pi]=1
-        mask = mask.to(device)
-        output.backward(mask,retain_graph=bind<bsize)
-        # if this is a simple FCN, the parameters come in pairs, each pair is for a layer, the first is the weights, the second is bias
-        with torch.no_grad():
-          for l in range(model.numlayers):
-            bshape = model.layers[l].bias.shape[0]
-            lgs[l*2] += JACRATE*2 * model.layers[l].bias.grad.reshape((bshape,1)) @ model.layers[l].bias.grad.reshape((1,bshape)) @ model.layers[l].weight
-        zerograd(model)
-      # update the gradients all-together and step
-      for p,g in zip(model.parameters(),lgs):
-        p.grad = g
-    # pdb.set_trace()
+    # if JACRATE > 0:
+    lgs = [p.grad.clone().detach() for p in model.parameters()]
+    zerograd(model)
+    pi = (torch.rand(bsize)*10).long()
+    mask = torch.zeros(output.shape)
+    for b in range(bsize):
+      mask[b,pi[b]] = 1
+    mask = mask.to(device)
+    output.backward(mask)
+    with torch.no_grad():
+      for l in range(model.numlayers):
+        bshape = model.layers[l].bias.shape[0]
+        lgs[l*2] += (JACRATE/bsize)*2 * model.layers[l].bias.grad.reshape((bshape,1)) @ model.layers[l].bias.grad.reshape((1,bshape)) @ model.layers[l].weight
+
+    for p,g in zip(model.parameters(),lgs):
+      p.grad = g
     optimizer.step()
     # if batch_idx % 100==0: print(loss.item())
     # if batch_idx % args.log_interval == 0:
