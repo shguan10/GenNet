@@ -11,7 +11,7 @@ import numpy as np
 
 EPS=1e-6
 GAMMA=.01
-JACRATE = 0
+JACRATE = .1
 
 class Net(nn.Module):
   def __init__(self,numlayers=2):
@@ -24,19 +24,28 @@ class Net(nn.Module):
       self.params.extend(l.parameters())
 
   def forward(self, x):
-    for layer in self.layers:
-      x = F.relu(layer(x))
-    return F.log_softmax(x, dim=1)
+    self.zs = []
+    for ind,layer in enumerate(self.layers):
+      if ind < self.numlayers-1: x = F.relu(layer(x))
+      else: x= F.log_softmax(layer(x),dim=1)
+      self.zs.append(x)
+    for ind,z in enumerate(self.zs):
+      z.requires_grad_()
+      z.retain_grad()
+    return x
 
 def zerograd(model):
   for p in model.parameters():
     p.grad-=p.grad
+  for z in model.zs:
+    z.grad -= z.grad
 
 def trainFCN(args, model, device, train_loader, optimizer, epoch):
   model.train()
   # for batch_idx, (data, target) in tqdm(enumerate(train_loader)):
   for (data, target) in tqdm((train_loader)):
     data, target = data.to(device), target.to(device)
+    data.requires_grad_()
     bsize = data.shape[0]
     data = data.reshape((bsize,784))
     optimizer.zero_grad()
@@ -55,7 +64,10 @@ def trainFCN(args, model, device, train_loader, optimizer, epoch):
     with torch.no_grad():
       for l in range(model.numlayers):
         bshape = model.layers[l].bias.shape[0]
-        lgs[l*2] += (JACRATE/bsize)*2 * model.layers[l].bias.grad.reshape((bshape,1)) @ model.layers[l].bias.grad.reshape((1,bshape)) @ model.layers[l].weight
+        tmp = model.zs[l].grad.t() @ model.zs[l].grad
+        # pdb.set_trace()
+        tmp = tmp @ model.layers[l].weight
+        lgs[l*2] += (JACRATE/bsize)*2 * tmp
 
     for p,g in zip(model.parameters(),lgs):
       p.grad = g
@@ -97,7 +109,7 @@ def main():
             help='number of epochs to train (default: 10)')
   parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
             help='learning rate (default: 0.01)')
-  parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
+  parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
             help='SGD momentum (default: 0.5)')
   parser.add_argument('--no-cuda', action='store_true', default=False,
             help='disables CUDA training')
@@ -109,11 +121,12 @@ def main():
   parser.add_argument('--save-model', action='store_true', default=False,
             help='For Saving the current Model')
 
-  parser.add_argument('--large-margin', action='store_true', default=False, 
-            help='use large-margin')
+  parser.add_argument('--weight-decay', action='store_true', default=False, 
+            help='use weight decay')
   parser.add_argument('--numlayers', type=int, default=2, metavar='ls',
             help='(default: 2)')
   args = parser.parse_args()
+  args.large_margin = not args.weight_decay
   use_cuda = not args.no_cuda and torch.cuda.is_available()
 
   torch.manual_seed(args.seed)
