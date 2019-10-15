@@ -50,7 +50,7 @@ def trainFCN(args, model, device, train_loader, optimizer, epoch):
     # for each layer l get the gradient
     # and take sum of products
     if JACRATE > 0:
-      lgs = [torch.tensor(p.grad) for p in model.parameters()]
+      lgs = [p.grad.clone().detach() for p in model.parameters()]
       # zero the grad
       zerograd(model)
       chosen = (torch.rand(len(data))*10).int()
