@@ -11,7 +11,7 @@ import numpy as np
 
 EPS=1e-6
 GAMMA=.01
-JACRATE = .1
+JACRATE = .01
 WD = 0.005
 
 class Net(nn.Module):
