@@ -30,6 +30,10 @@ def genpoint(stdnorm=np.random.normal,size=10):
     return (x1,x2,y)
 
 def genXs(numdata = 1000,numfeat = 6):
+    # 0 is bias
+    # 1,2,3 is X1
+    # 4,5 is X2
+    # 4 is from a Bernoulli, biased towards 1
     xs = np.random.normal(size=(numdata,numfeat))
     xs[:,0] = 1
     xs[:,3] /= 10
@@ -145,7 +149,6 @@ def traintest(model,optimizer,trainxs,testxs,realbeta,numdata=1000):
     std=1
     # train for 10 epochs
     for _ in range(1000):
-        # batches of size 10
         bsize=100
         for start in range(int(numdata/bsize)):
             data = trainxs[start:start+bsize,:]
@@ -164,7 +167,7 @@ def traintest(model,optimizer,trainxs,testxs,realbeta,numdata=1000):
     x2 = testxs[:,3:]
     model.eval()
     with torch.no_grad(): 
-        testloss = model.forward(x1,x2,y).numpy()
+        testloss = model.forward1(x1,x2,y).numpy()
         
     return testloss / testxs.shape[0]
 
