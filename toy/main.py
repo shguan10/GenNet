@@ -10,7 +10,7 @@ import pdb
 import matplotlib.pyplot as plt
 
 from models import *
-
+from scipy import stats
 
 """
 The scenario we are testing is the simple linear regression vs the
@@ -171,30 +171,64 @@ def traintest(model,optimizer,trainxs,testxs,realbeta,numdata=1000):
         
     return testloss / testxs.shape[0]
 
-def main():
-    for std in [1]:
-        numpoints = 100
-        avg = np.ones(numpoints)
-        data = [getEstimatorError(1,2.5) for s in range(numpoints)]
-        data = np.array(data)
-        olserrs = data[:,0]
-        olsavg = avg * olserrs.mean()
-        ridgeerrs = data[:,1]
-        ridgeavg = avg * ridgeerrs.mean()
-        op = data[:,2].mean()
-        rp = data[:,3].mean()
-        print("obias - rbias",(olsavg - ridgeavg)[0])(model.w1h.weight,model.w2h.weight)
-        print("ostd - rstd",olserrs.std() - ridgeerrs.std())
-        print("op - rp",(op - rp))
-        # np.save("olserrs.npy",olserrs)
-        # np.save("ridgeerrs.npy",ridgeerrs)
-        xs = np.arange(numpoints)
-        plt.plot(xs,olserrs,'rs',xs,ridgeerrs,'bs',
-                 xs,olsavg,"r--",xs,ridgeavg,"b--")
-        plt.show()
+def exp2():
+    # this will be the unimodal task experiment
+    numdata = 1000
+    numfeat = 5
+    p = 0.7
+    cutoff = sp.stats.norm(0,1).ppf(p)
+
+    xs = np.random.normal(size=(numdata,numfeat))
+    xs[:,0] = 1
+    xs[:,4] = xs[:,4]<cutoff
+    realbeta = np.zeros((numfeat,1))
+    realbeta[1:3,:] = 10
+    realbeta[4,:] = 1
+    y = xs @ realbeta
+    y += np.random.normal(size=(y.shape))
+
+    # do the first model
+    X = xs[:900,:4]
+    Y = y[:900,:]
+    Xt = np.transpose(X)
+    XtX = Xt @ X
+    XtXinv = np.linalg.inv(XtX)
+    hatbeta = XtXinv @ Xt @ Y
+
+    testX = xs[900:,:4]
+    prederr = (testX @ hatbeta) - y[900:,:]
+    uprederr = (np.transpose(prederr) @ prederr).squeeze()
+    # print("control error: ",uprederr)
+
+    # do the second model
+    X = xs[:900,:]
+    Xt = np.transpose(X)
+    XtX = Xt @ X
+    XtXinv = np.linalg.inv(XtX)
+    hatbeta = XtXinv @ Xt @ Y
+
+    testX = np.concatenate((xs[900:,:4], np.ones((100,1))*X[:,4].mean()),axis=1)
+    prederr = (testX @ hatbeta) - y[900:,:]
+    bprederr = (np.transpose(prederr) @ prederr).squeeze()
+    # print("bimodal error: ",bprederr)
+    # print("bimodal benefit: ",uprederr - bprederr)
+    return uprederr - bprederr
+
+def main():    
+    numpoints = 10000
+    avg = np.ones(numpoints)
+    data = [exp2() for s in range(numpoints)]
+    data = np.array(data)
+    errs = data
+    avg = avg * errs.mean()
+    xs = np.arange(numpoints)
+    print("benefit: ", avg[0])
+    plt.plot(xs,errs,'rs',xs,avg,"r--")
+    plt.show()
 
 if __name__ == '__main__':
-    olse,tte = exp1()
-    print(olse)
-    print(tte)
-    print("ols - tt, ",olse-tte)
+    # olse,tte = exp1()
+    # print(olse)
+    # print(tte)
+    # print("ols - tt, ",olse-tte)
+    main()
