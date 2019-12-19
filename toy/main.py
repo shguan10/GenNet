@@ -171,59 +171,88 @@ def traintest(model,optimizer,trainxs,testxs,realbeta,numdata=1000):
         
     return testloss / testxs.shape[0]
 
-def exp2():
-    # this will be the unimodal task experiment
-    numdata = 1000
+def exp3(corrp = 0.01,cutoffp = 0.8,x4weight=1):
+    # this will be the unimodal task experiment with a weak form of correlation between X4 and X2
+    numdata = 10000
+    numtrain = 9000
+    numtest = numdata - numtrain
     numfeat = 5
-    p = 0.7
-    cutoff = sp.stats.norm(0,1).ppf(p)
+    
+    cutoff = sp.stats.norm(0,1).ppf(cutoffp)
+    select = np.random.binomial(1,corrp,size=(numdata,1))
 
     xs = np.random.normal(size=(numdata,numfeat))
     xs[:,0] = 1
-    xs[:,4] = xs[:,4]<cutoff
+    xs[:,4] = ((xs[:,4]<xs[:,2])[:,None]*select + (xs[:,4]<cutoff)[:,None]*(1-select)).squeeze()
     realbeta = np.zeros((numfeat,1))
     realbeta[1:3,:] = 10
-    realbeta[4,:] = 1
+    realbeta[4,:] = x4weight
     y = xs @ realbeta
     y += np.random.normal(size=(y.shape))
 
     # do the first model
-    X = xs[:900,:4]
-    Y = y[:900,:]
+    X = xs[:numtrain,:4]
+    Y = y[:numtrain,:]
     Xt = np.transpose(X)
     XtX = Xt @ X
     XtXinv = np.linalg.inv(XtX)
     hatbeta = XtXinv @ Xt @ Y
 
-    testX = xs[900:,:4]
-    prederr = (testX @ hatbeta) - y[900:,:]
+    testX = xs[numtrain:,:4]
+    prederr = (testX @ hatbeta) - y[numtrain:,:]
     uprederr = (np.transpose(prederr) @ prederr).squeeze()
     # print("control error: ",uprederr)
 
     # do the second model
-    X = xs[:900,:]
+    X = xs[:numtrain,:]
     Xt = np.transpose(X)
     XtX = Xt @ X
     XtXinv = np.linalg.inv(XtX)
     hatbeta = XtXinv @ Xt @ Y
 
-    testX = np.concatenate((xs[900:,:4], np.ones((100,1))*X[:,4].mean()),axis=1)
-    prederr = (testX @ hatbeta) - y[900:,:]
+    testX = np.concatenate((xs[numtrain:,:4], np.ones((numtest,1))*X[:,4].mean()),axis=1)
+    prederr = (testX @ hatbeta) - y[numtrain:,:]
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     # print("bimodal error: ",bprederr)
     # print("bimodal benefit: ",uprederr - bprederr)
     return uprederr - bprederr
 
-def main():    
-    numpoints = 10000
+def aggregate():
+    numpoints = 1000
     avg = np.ones(numpoints)
-    data = [exp2() for s in range(numpoints)]
+    corrp = 0.01
+    cutoffp = 0.7
+    x4weight = 1
+    data = [exp3(corrp=corrp,cutoffp=cutoffp,x4weight=x4weight) for s in range(numpoints)]
     data = np.array(data)
-    errs = data
-    avg = avg * errs.mean()
+    avg = avg * data.mean()
     xs = np.arange(numpoints)
-    print("benefit: ", avg[0])
-    plt.plot(xs,errs,'rs',xs,avg,"r--")
+    print("numdatasets: ",numpoints)
+    print("corrp: ",corrp)
+    print("cutoffp: ",cutoffp)
+    print("x4weight: ",x4weight)
+    print("benefit: ", data.mean())
+    plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
+    plt.show()
+    return data.mean()
+
+def main():
+    N = 100
+    data = [aggregate() for _ in range(N)]
+    data = np.array(data)
+    mu = data.mean()
+    sigma = data.std()
+    t = sp.stats.t(N-1)
+    p = t.cdf(-mu/sigma)
+    lo = (t.ppf(0.025)*sigma)+mu
+    hi = (t.ppf(0.975)*sigma)+mu
+    xs = np.arange(N)
+    ones = np.ones(N)
+    print("#####################")
+    print("mean: ",mu)
+    print("std: ",sigma)
+    print("p value: ",p)
+    plt.plot(xs,data,'rs',xs,ones*lo,'g--',xs,ones*hi,'g--')
     plt.show()
 
 if __name__ == '__main__':
