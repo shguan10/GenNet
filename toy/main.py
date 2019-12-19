@@ -171,10 +171,9 @@ def traintest(model,optimizer,trainxs,testxs,realbeta,numdata=1000):
         
     return testloss / testxs.shape[0]
 
-def exp3(corrp = 0.01,cutoffp = 0.8,x4weight=1):
+def exp3(numdata=1000,corrp = 0.01,cutoffp = 0.8,x4weight=1):
     # this will be the unimodal task experiment with a weak form of correlation between X4 and X2
-    numdata = 10000
-    numtrain = 9000
+    numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
     numfeat = 5
     
@@ -217,23 +216,20 @@ def exp3(corrp = 0.01,cutoffp = 0.8,x4weight=1):
     # print("bimodal benefit: ",uprederr - bprederr)
     return uprederr - bprederr
 
-def aggregate():
-    numpoints = 1000
-    avg = np.ones(numpoints)
-    corrp = 0.01
-    cutoffp = 0.7
-    x4weight = 1
-    data = [exp3(corrp=corrp,cutoffp=cutoffp,x4weight=x4weight) for s in range(numpoints)]
+def aggregate(numdatasets=1000,corrp=0.1,cutoffp=0.5,x4weight=1):
+    datasetsize = 10000
+    data = [exp3(numdata=datasetsize,corrp=corrp,cutoffp=cutoffp,x4weight=x4weight) for _ in range(numdatasets)]
     data = np.array(data)
-    avg = avg * data.mean()
-    xs = np.arange(numpoints)
-    print("numdatasets: ",numpoints)
+    print("numdatasets: ",numdatasets)
     print("corrp: ",corrp)
     print("cutoffp: ",cutoffp)
     print("x4weight: ",x4weight)
     print("benefit: ", data.mean())
-    plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
-    plt.show()
+    # xs = np.arange(numdatasets)
+    # avg = np.ones(numdatasets)
+    # avg = avg * data.mean()
+    # plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
+    # plt.show()
     return data.mean()
 
 def main():
