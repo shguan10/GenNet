@@ -12,12 +12,6 @@ import matplotlib.pyplot as plt
 from models import *
 from scipy import stats
 
-"""
-The scenario we are testing is the simple linear regression vs the
-translation via intermediary vector to final classification task.
-
-"""
-
 def genpoint(stdnorm=np.random.normal,size=10):
     xs = stdnorm(size=size)
     x1 = xs
@@ -183,6 +177,7 @@ def exp3(numdata=1000,corrp = 0.01,cutoffp = 0.8,x4weight=1):
     xs = np.random.normal(size=(numdata,numfeat))
     xs[:,0] = 1
     xs[:,4] = ((xs[:,4]<xs[:,2])[:,None]*select + (xs[:,4]<cutoff)[:,None]*(1-select)).squeeze()
+    # xs[:,4] += ((xs[:,4]<xs[:,2])[:,None]*select).squeeze()
     realbeta = np.zeros((numfeat,1))
     realbeta[1:3,:] = 10
     realbeta[4,:] = x4weight
@@ -216,7 +211,7 @@ def exp3(numdata=1000,corrp = 0.01,cutoffp = 0.8,x4weight=1):
     # print("bimodal benefit: ",uprederr - bprederr)
     return uprederr - bprederr
 
-def aggregate(numdatasets=1000,corrp=0.1,cutoffp=0.5,x4weight=1):
+def aggregate3(numdatasets=1000,corrp=0.01,cutoffp=0.5,x4weight=1):
     datasetsize = 10000
     data = [exp3(numdata=datasetsize,corrp=corrp,cutoffp=cutoffp,x4weight=x4weight) for _ in range(numdatasets)]
     data = np.array(data)
@@ -232,9 +227,71 @@ def aggregate(numdatasets=1000,corrp=0.1,cutoffp=0.5,x4weight=1):
     # plt.show()
     return data.mean()
 
+def exp4(numdata=1000,corrp = 0.01,cutoffp = 0.8,m2weight=(1,1,0,0)):
+    numtrain = int(0.9*numdata)
+    numtest = numdata - numtrain
+    numfeat = 8
+    
+    cutoff = sp.stats.norm(0,1).ppf(cutoffp)
+    select = np.random.binomial(1,corrp,size=(numdata,1))
+
+    xs = np.random.normal(size=(numdata,numfeat))
+    xs[:,0] = 1
+    # xs[:,4] = xs[:,4]<cutoff
+    # xs[:,6] = xs[:,6]<cutoff
+    # x5 will be correlated in some way with x2
+    # xs[:,5] /= 10
+    xs[:,5] += xs[:,2]
+    realbeta = np.zeros((numfeat,1))
+    realbeta[1:3,:] = 10
+    realbeta[4:,:] = np.array(m2weight)[:,None]
+    y = xs @ realbeta
+    y += np.random.normal(size=(y.shape))
+
+    # do the first model
+    X = xs[:numtrain,:4]
+    Y = y[:numtrain,:]
+    Xt = np.transpose(X)
+    XtX = Xt @ X
+    XtXinv = np.linalg.inv(XtX)
+    hatbeta = XtXinv @ Xt @ Y
+
+    testX = xs[numtrain:,:4]
+    prederr = (testX @ hatbeta) - y[numtrain:,:]
+    uprederr = (np.transpose(prederr) @ prederr).squeeze()
+
+    # do the second model
+    X = xs[:numtrain,:]
+    Xt = np.transpose(X)
+    XtX = Xt @ X
+    XtXinv = np.linalg.inv(XtX)
+    hatbeta = XtXinv @ Xt @ Y
+
+    testX = np.concatenate((xs[numtrain:,:4], 
+                            np.ones((numtest,numfeat-4))*X[:,4:].mean(axis=0)),axis=1)
+    prederr = (testX @ hatbeta) - y[numtrain:,:]
+    bprederr = (np.transpose(prederr) @ prederr).squeeze()
+    return uprederr - bprederr
+
+def aggregate4(numdatasets=1000,corrp=0.1,cutoffp=0.5,m2weight=(1,1,0,0)):
+    datasetsize = 10000
+    data = [exp4(numdata=datasetsize,corrp=corrp,cutoffp=cutoffp,m2weight=m2weight) for _ in range(numdatasets)]
+    data = np.array(data)
+    print("numdatasets: ",numdatasets)
+    # print("corrp: ",corrp)
+    print("cutoffp: ",cutoffp)
+    print("m2weight: ",m2weight)
+    print("benefit: ", data.mean())
+    # xs = np.arange(numdatasets)
+    # avg = np.ones(numdatasets)
+    # avg = avg * data.mean()
+    # plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
+    # plt.show()
+    return data.mean()
+
 def main():
     N = 100
-    data = [aggregate() for _ in range(N)]
+    data = [aggregate4(cutoffp=0.7,m2weight=(1,0.01,1,0)) for _ in range(N)]
     data = np.array(data)
     mu = data.mean()
     sigma = data.std()
@@ -257,3 +314,4 @@ if __name__ == '__main__':
     # print(tte)
     # print("ols - tt, ",olse-tte)
     main()
+    # aggregate3()
