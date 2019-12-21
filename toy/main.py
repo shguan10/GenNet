@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from models import *
 from scipy import stats
 import sklearn as sk
+from sklearn import svm
+from tqdm import tqdm
 
 def genpoint(stdnorm=np.random.normal,size=10):
     xs = stdnorm(size=size)
@@ -305,44 +307,55 @@ def exp5(numdata=1000,m2weight=(1,0.01,1,0)):
     realbeta[4:,:] = np.array(m2weight)[:,None]
     y = xs @ realbeta
     y += np.random.normal(size=(y.shape))
-    y = y>0
+    y = (y>0).astype(np.int64).squeeze()
 
     # do the first model
     X = xs[:numtrain,:4]
-    Y = y[:numtrain,:]
-    clf = sk.svm(X,Y)
+    Y = y[:numtrain]
+    clf = sk.svm.SVC(kernel='linear')
+    clf.fit(X,Y)
 
     testX = xs[numtrain:,:4]
-    prederr = (clf.predict(testX)) - y[numtrain:,:]
+    prederr = (clf.predict(testX)) - y[numtrain:]
     uprederr = (np.transpose(prederr) @ prederr).squeeze()
 
     # do the second model
     X = xs[:numtrain,:]
-    clf = sk.svm(X,Y)
+    clf = sk.svm.SVC(kernel='linear')
+    clf.fit(X,Y)
 
     testX = np.concatenate((xs[numtrain:,:4], 
                             np.ones((numtest,numfeat-4))*X[:,4:].mean(axis=0)),axis=1)
-    prederr = (clf.predict(testX)) - y[numtrain:,:]
+    prederr = (clf.predict(testX)) - y[numtrain:]
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
-    return uprederr - bprederr
+    benefit = uprederr - bprederr
+    return benefit
 
-def aggregate5(numdatasets=1000,m2weight=(1,0.01,1,0)):
+def aggregate5(numdatasets=1000,m2weight=(1,0.01,1,0),show=False):
     datasetsize = 10000
-    data = [exp4(numdata=datasetsize,m2weight=m2weight) for _ in range(numdatasets)]
+    tot=0
+    data = []
+    for i in range(numdatasets):
+        data.append(exp5(numdata=datasetsize,m2weight=m2weight))
+        tot+=data[-1]
+        print("it: ",i,"/",numdatasets,", avg benefit: ",tot/(i+1),end="\r",flush=True)
+    mean = tot/numdatasets
     data = np.array(data)
-    print("numdatasets: ",numdatasets)
+    print("\nnumdatasets: ",numdatasets)
     print("m2weight: ",m2weight)
-    print("benefit: ", data.mean())
-    xs = np.arange(numdatasets)
-    avg = np.ones(numdatasets)
-    avg = avg * data.mean()
-    plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
-    plt.show()
+    print("benefit: ", mean)
+    if show:
+        xs = np.arange(numdatasets)
+        avg = np.ones(numdatasets)
+        avg = avg * mean
+        plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
+        plt.show()
     return data.mean()
 
 def main():
-    N = 100
-    data = [aggregate5(cutoffp=0.7,m2weight=(1,0.01,1,0)) for _ in range(N)]
+    N = 10
+    # data = [aggregate4(cutoffp=0.7,m2weight=(1,0.01,1,0)) for _ in range(N)]
+    data = [aggregate5(m2weight=(1,0.01,1,0)) for _ in range(N)]
     data = np.array(data)
     mu = data.mean()
     sigma = data.std()
@@ -364,5 +377,5 @@ if __name__ == '__main__':
     # print(olse)
     # print(tte)
     # print("ols - tt, ",olse-tte)
-    # main()
-    aggregate5()
+    main()
+    # aggregate5(show=True)
