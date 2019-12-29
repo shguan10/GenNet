@@ -185,7 +185,7 @@ def exp3(numdata=1000,corrp = 0.01,cutoffp = 0.8,x4weight=1):
     realbeta[1:3,:] = 10
     realbeta[4,:] = x4weight
     y = xs @ realbeta
-    y += np.random.normal(size=(y.shape))
+    y += np.random.normal(size=y.shape)
 
     # do the first model
     X = xs[:numtrain,:4]
@@ -213,22 +213,6 @@ def exp3(numdata=1000,corrp = 0.01,cutoffp = 0.8,x4weight=1):
     # print("bimodal error: ",bprederr)
     # print("bimodal benefit: ",uprederr - bprederr)
     return uprederr - bprederr
-
-def aggregate3(numdatasets=1000,corrp=0.01,cutoffp=0.5,x4weight=1):
-    datasetsize = 10000
-    data = [exp3(numdata=datasetsize,corrp=corrp,cutoffp=cutoffp,x4weight=x4weight) for _ in range(numdatasets)]
-    data = np.array(data)
-    print("numdatasets: ",numdatasets)
-    print("corrp: ",corrp)
-    print("cutoffp: ",cutoffp)
-    print("x4weight: ",x4weight)
-    print("benefit: ", data.mean())
-    # xs = np.arange(numdatasets)
-    # avg = np.ones(numdatasets)
-    # avg = avg * data.mean()
-    # plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
-    # plt.show()
-    return data.mean()
 
 def exp4(numdata=1000,corrp = 0.01,cutoffp = 0.8,m2weight=(1,1,0,0)):
     numtrain = int(0.9*numdata)
@@ -533,8 +517,8 @@ def aggregate7(numdatasets=100,corrp=0.1,x4weight=0,x1x4weight=1,show=False):
         plt.show()
     return data.mean()
 
-def main(fn):
-    N = 1000
+def main(fn,numits=1000):
+    N = numits
     data = np.array([])
     for it in range(N):
         res = fn()
@@ -545,9 +529,9 @@ def main(fn):
         t = sp.stats.t(it)
         p = t.cdf(-mu/sigma) if it>0 else 1
         print("it: ",it,"/",N-1,
-              ", mean: ",mu,
-              ", std: ",sigma,
-              ", p value: ",p,end="\r",flush=True)
+              ", mean: %.4f" %mu,
+              ", std: %.4f"%sigma,
+              ", p value: %.4f"%p,end="\r",flush=True)
     print("\n")
     lo = mu+(t.ppf(0.05)*sigma)
     # lo = mu+(t.ppf(0.025)*sigma)
@@ -565,6 +549,8 @@ if __name__ == '__main__':
     # print("ols - tt, ",olse-tte)
     def fn(show=False):
         # return aggregate7(x4weight=1,x1x4weight=1,show=show)
-        return exp7(x4weight=0,x1x4weight=10)
+        return exp3(numdata=10000,corrp = 0.0,cutoffp = 0.7,x4weight=10)
+        # return exp7(x4weight=0,x1x4weight=10)
+
     # fn(True)
-    main(fn)
+    main(fn,numits=1000)
