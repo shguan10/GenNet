@@ -450,8 +450,6 @@ def exp8(numdata=1000,m1weight=(1,),m2weight=(1,)):
     realbeta = [1]+list(m1weight) + list(m2weight)
     realbeta = np.array(realbeta).reshape(-1,1)
 
-    # xs = np.concatenate((xs,(xs[:,4]*xs[:,1]).reshape(numdata,-1)),axis=1)
-
     y = xs @ realbeta
     y += np.random.normal(size=(y.shape))
 
@@ -472,13 +470,55 @@ def exp8(numdata=1000,m1weight=(1,),m2weight=(1,)):
     Xt = np.transpose(X)
     XtX = Xt @ X
     XtXinv = np.linalg.inv(XtX)
-    hatbeta = XtXinv @ Xt @ Y
+    hatbeta2 = XtXinv @ Xt @ Y
 
     m2avg = np.ones((numtest,numfeat-m2start))*X[:numtrain,m2start:].mean(axis=0)
     testX = np.concatenate((xs[numtrain:,:m2start],
                             m2avg),axis=1)
-                            # X4avg*(xs[numtrain:,1]).reshape(-1,1)),axis=1)
+    prederr = (testX @ hatbeta2) - y[numtrain:,:]
+    bprederr = (np.transpose(prederr) @ prederr).squeeze()
+    # return np.sum(hatbeta*hatbeta).squeeze()-np.sum(hatbeta2[:-1]*hatbeta2[:-1]).squeeze()
+    return uprederr - bprederr
+
+def exp9(numdata=1000,m1weight=(1,),m2weight=(1,),bias=0):
+    numtrain = int(0.9*numdata)
+    numtest = numdata - numtrain
+    numfeat = 1+len(m1weight)+len(m2weight)
+    m2start = 1+len(m1weight)
+
+    xs = np.random.normal(size=(numdata,numfeat))
+    xs[:,0] = 1
+    
+    realbeta = [1]+list(m1weight) + list(m2weight)
+    realbeta = np.array(realbeta).reshape(-1,1)
+
+    y = xs @ realbeta
+    y += np.random.normal(size=(y.shape))
+    y += bias
+
+    # do the first model
+    X = xs[:numtrain,:m2start]
+    Y = y[:numtrain,:]
+    Xt = np.transpose(X)
+    XtX = Xt @ X
+    XtXinv = np.linalg.inv(XtX)
+    hatbeta = XtXinv @ Xt @ Y
+
+    testX = xs[numtrain:,:m2start]
     prederr = (testX @ hatbeta) - y[numtrain:,:]
+    uprederr = (np.transpose(prederr) @ prederr).squeeze()
+
+    # do the second model
+    X = xs[:numtrain,:]
+    Xt = np.transpose(X)
+    XtX = Xt @ X
+    XtXinv = np.linalg.inv(XtX)
+    hatbeta2 = XtXinv @ Xt @ Y
+
+    testX = xs[numtrain:,:m2start]
+    hatbeta2 = hatbeta2[:m2start]
+
+    prederr = (testX @ hatbeta2) - y[numtrain:,:]
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
@@ -519,7 +559,7 @@ if __name__ == '__main__':
         # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp6(numdata=1000)
         # return exp7(x4weight=1,x1x4weight=0)
-        return exp8(numdata=1000,m1weight=[1]*200,m2weight=[1])
+        return exp9(numdata=1000,m1weight=[1]*200,m2weight=[1],bias=1)
 
     # fn(True)
     main(fn,numits=1000)
