@@ -214,26 +214,20 @@ def exp3(numdata=1000,corrp = 0.01,cutoffp = 0.8,x4weight=1):
     # print("bimodal benefit: ",uprederr - bprederr)
     return uprederr - bprederr
 
-def exp4(numdata=1000,corrp = 0.01,cutoffp = 0.8,m2weight=(1,1,0,0)):
+def exp4(numdata=1000,m2weight=(1,1,0,0)):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
     numfeat = 8
     
-    cutoff = sp.stats.norm(0,1).ppf(cutoffp)
-    select = np.random.binomial(1,corrp,size=(numdata,1))
-
     xs = np.random.normal(size=(numdata,numfeat))
     xs[:,0] = 1
-    # xs[:,4] = xs[:,4]<cutoff
-    # xs[:,6] = xs[:,6]<cutoff
     # x5 will be correlated in some way with x2
-    # xs[:,5] /= 10
     xs[:,5] += xs[:,2]
     realbeta = np.zeros((numfeat,1))
     realbeta[1:3,:] = 10
     realbeta[4:,:] = np.array(m2weight)[:,None]
     y = xs @ realbeta
-    y += np.random.normal(size=(y.shape))
+    y += np.random.normal(size=y.shape)
 
     # do the first model
     X = xs[:numtrain,:4]
@@ -260,23 +254,6 @@ def exp4(numdata=1000,corrp = 0.01,cutoffp = 0.8,m2weight=(1,1,0,0)):
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
-def aggregate4(numdatasets=1000,corrp=0.1,cutoffp=0.5,m2weight=(1,1,0,0),show=False):
-    datasetsize = 10000
-    data = [exp4(numdata=datasetsize,corrp=corrp,cutoffp=cutoffp,m2weight=m2weight) for _ in range(numdatasets)]
-    data = np.array(data)
-    print("numdatasets: ",numdatasets)
-    # print("corrp: ",corrp)
-    print("cutoffp: ",cutoffp)
-    print("m2weight: ",m2weight)
-    print("benefit: ", data.mean())
-    if show:
-        xs = np.arange(numdatasets)
-        avg = np.ones(numdatasets)
-        avg = avg * data.mean()
-        plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
-        plt.show()
-    return data.mean()
-
 def exp5(numdata=1000,m2weight=(1,0.01,1,0)):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
@@ -291,7 +268,7 @@ def exp5(numdata=1000,m2weight=(1,0.01,1,0)):
     realbeta[1:3,:] = 10
     realbeta[4:,:] = np.array(m2weight)[:,None]
     y = xs @ realbeta
-    # y += np.random.normal(size=(y.shape))
+    # y += np.random.normal(size=(y.shape))/16
     y = (y>0).astype(np.int64).squeeze()
 
     # do the first model
@@ -314,28 +291,7 @@ def exp5(numdata=1000,m2weight=(1,0.01,1,0)):
     prederr = (clf.predict(testX)) - y[numtrain:]
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     benefit = uprederr - bprederr
-    return benefitBackyardigans
-
-def aggregate5(numdatasets=10,m2weight=(2,0.01,2,0),show=False):
-    datasetsize = 100000
-    tot=0
-    data = []
-    for i in range(numdatasets):
-        data.append(exp5(numdata=datasetsize,m2weight=m2weight))
-        tot+=data[-1]
-        print("it: ",i,"/",numdatasets-1,", avg benefit: ",tot/(i+1),end="\r",flush=True)
-    mean = tot/numdatasets
-    data = np.array(data)
-    print("\nnumdatasets: ",numdatasets)
-    print("m2weight: ",m2weight)
-    print("benefit: ", mean)
-    if show:
-        xs = np.arange(numdatasets)
-        avg = np.ones(numdatasets)
-        avg = avg * mean
-        plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
-        plt.show()
-    return data.mean()
+    return benefit
 
 def exp6(numdata=1000):
     numtrain = int(0.9*numdata)
@@ -437,25 +393,6 @@ def exp6(numdata=1000):
     # print(testloss2)
     return testloss1-testloss2
 
-def aggregate6(numdatasets=100,show=False):
-    tot=0
-    data = []
-    for i in range(numdatasets):
-        data.append(exp6())
-        tot+=data[-1]
-        print("it: ",i,"/",numdatasets-1,", avg benefit: ",tot/(i+1),end="\r",flush=True)
-    mean = tot/numdatasets
-    data = np.array(data)
-    print("\nnumdatasets: ",numdatasets)
-    print("benefit: ", mean)
-    if show:
-        xs = np.arange(numdatasets)
-        avg = np.ones(numdatasets)
-        avg = avg * mean
-        plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
-        plt.show()
-    return data.mean()
-
 def exp7(numdata=1000,corrp = 0.01,x4weight=1,x1x4weight=1):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
@@ -501,21 +438,49 @@ def exp7(numdata=1000,corrp = 0.01,x4weight=1,x1x4weight=1):
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
-def aggregate7(numdatasets=100,corrp=0.1,x4weight=0,x1x4weight=1,show=False):
-    datasetsize = 10000
-    data = [exp7(numdata=datasetsize,corrp=corrp,x4weight=x4weight,x1x4weight=x1x4weight) for _ in range(numdatasets)]
-    data = np.array(data)
-    if show:
-        print("numdatasets: ",numdatasets)
-        # print("corrp: ",corrp)
-        print("x4weight: ",x4weight)
-        print("benefit: ", data.mean())
-        xs = np.arange(numdatasets)
-        avg = np.ones(numdatasets)
-        avg = avg * data.mean()
-        plt.plot(xs,data,'rs',xs,avg,"b--",xs,np.zeros(xs.shape),"g--")
-        plt.show()
-    return data.mean()
+def exp8(numdata=1000,m1weight=(1,),m2weight=(1,)):
+    numtrain = int(0.9*numdata)
+    numtest = numdata - numtrain
+    numfeat = 1+len(m1weight)+len(m2weight)
+    m2start = 1+len(m1weight)
+
+    xs = np.random.normal(size=(numdata,numfeat))
+    xs[:,0] = 1
+    
+    realbeta = [1]+list(m1weight) + list(m2weight)
+    realbeta = np.array(realbeta).reshape(-1,1)
+
+    # xs = np.concatenate((xs,(xs[:,4]*xs[:,1]).reshape(numdata,-1)),axis=1)
+
+    y = xs @ realbeta
+    y += np.random.normal(size=(y.shape))
+
+    # do the first model
+    X = xs[:numtrain,:m2start]
+    Y = y[:numtrain,:]
+    Xt = np.transpose(X)
+    XtX = Xt @ X
+    XtXinv = np.linalg.inv(XtX)
+    hatbeta = XtXinv @ Xt @ Y
+
+    testX = xs[numtrain:,:m2start]
+    prederr = (testX @ hatbeta) - y[numtrain:,:]
+    uprederr = (np.transpose(prederr) @ prederr).squeeze()
+
+    # do the second model
+    X = xs[:numtrain,:]
+    Xt = np.transpose(X)
+    XtX = Xt @ X
+    XtXinv = np.linalg.inv(XtX)
+    hatbeta = XtXinv @ Xt @ Y
+
+    m2avg = np.ones((numtest,numfeat-m2start))*X[:numtrain,m2start:].mean(axis=0)
+    testX = np.concatenate((xs[numtrain:,:m2start],
+                            m2avg),axis=1)
+                            # X4avg*(xs[numtrain:,1]).reshape(-1,1)),axis=1)
+    prederr = (testX @ hatbeta) - y[numtrain:,:]
+    bprederr = (np.transpose(prederr) @ prederr).squeeze()
+    return uprederr - bprederr
 
 def main(fn,numits=1000):
     N = numits
@@ -538,7 +503,8 @@ def main(fn,numits=1000):
     # hi = mu+(t.ppf(0.975)*sigma)
     xs = np.arange(N)
     ones = np.ones(N)
-    plt.plot(xs,data,'rs',xs,ones*lo,'g--')
+    plt.plot(xs,data,'rs',xs,ones*lo,'k-',xs,np.zeros(xs.shape),'w-')
+    # plt.plot(xs,data,'rs',xs,ones*lo,'w-',xs,np.zeros(xs.shape),'k-')
     # plt.plot(xs,data,'rs',xs,ones*lo,'g--',xs,ones*hi,'g--')
     plt.show()
 
@@ -548,9 +514,12 @@ if __name__ == '__main__':
     # print(tte)
     # print("ols - tt, ",olse-tte)
     def fn(show=False):
-        # return aggregate7(x4weight=1,x1x4weight=1,show=show)
-        return exp3(numdata=10000,corrp = 0.0,cutoffp = 0.7,x4weight=10)
-        # return exp7(x4weight=0,x1x4weight=10)
+        # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
+        # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
+        # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
+        # return exp6(numdata=1000)
+        # return exp7(x4weight=1,x1x4weight=0)
+        return exp8(numdata=1000,m1weight=[1]*200,m2weight=[1])
 
     # fn(True)
     main(fn,numits=1000)
