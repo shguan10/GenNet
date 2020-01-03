@@ -438,7 +438,7 @@ def exp7(numdata=1000,corrp = 0.01,x4weight=1,x1x4weight=1):
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
-def exp8(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit"):
+def exp9(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],useM2avg=True):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
     numfeat = 1+len(m1weight)+len(m2weight)
@@ -446,6 +446,7 @@ def exp8(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit"):
 
     xs = np.random.normal(size=(numdata,numfeat))
     xs[:,0] = 1
+    xs[:,m2start:]+=np.array(m2bias).reshape(1,-1)
     
     realbeta = [1]+list(m1weight) + list(m2weight)
     realbeta = np.array(realbeta).reshape(-1,1)
@@ -473,6 +474,7 @@ def exp8(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit"):
     hatbeta2 = XtXinv @ Xt @ Y
 
     m2avg = np.ones((numtest,numfeat-m2start))*X[:numtrain,m2start:].mean(axis=0)
+    m2avg*= useM2avg
     testX = np.concatenate((xs[numtrain:,:m2start],
                             m2avg),axis=1)
     prederr = (testX @ hatbeta2) - y[numtrain:,:]
@@ -480,7 +482,7 @@ def exp8(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit"):
     if metric=="benefit": return uprederr - bprederr
     else: return np.sum(hatbeta*hatbeta).squeeze()-np.sum(hatbeta2[:-1]*hatbeta2[:-1]).squeeze()
 
-def exp9(numdata=1000,m1weight=(1,),m2weight=(1,),bias=0):
+def exp10(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
     numfeat = 1+len(m1weight)+len(m2weight)
@@ -488,79 +490,35 @@ def exp9(numdata=1000,m1weight=(1,),m2weight=(1,),bias=0):
 
     xs = np.random.normal(size=(numdata,numfeat))
     xs[:,0] = 1
+    xs[:,m2start:]+=np.array(m2bias).reshape(1,-1)
     
     realbeta = [1]+list(m1weight) + list(m2weight)
     realbeta = np.array(realbeta).reshape(-1,1)
 
     y = xs @ realbeta
     y += np.random.normal(size=(y.shape))
-    y += bias
+    y -= np.array(m2bias).mean()
+    y = (y>0).astype(np.int64).squeeze()
 
     # do the first model
     X = xs[:numtrain,:m2start]
-    Y = y[:numtrain,:]
-    Xt = np.transpose(X)
-    XtX = Xt @ X
-    XtXinv = np.linalg.inv(XtX)
-    hatbeta = XtXinv @ Xt @ Y
+    Y = y[:numtrain]
+    clf = sk.svm.SVC(kernel='linear')
+    clf.fit(X,Y)
 
     testX = xs[numtrain:,:m2start]
-    prederr = (testX @ hatbeta) - y[numtrain:,:]
+    prederr = (clf.predict(testX)) - y[numtrain:]
     uprederr = (np.transpose(prederr) @ prederr).squeeze()
 
     # do the second model
     X = xs[:numtrain,:]
-    Xt = np.transpose(X)
-    XtX = Xt @ X
-    XtXinv = np.linalg.inv(XtX)
-    hatbeta2 = XtXinv @ Xt @ Y
+    clf = sk.svm.SVC(kernel='linear')
+    clf.fit(X,Y)
 
-    testX = xs[numtrain:,:m2start]
-    hatbeta2 = hatbeta2[:m2start]
-
-    prederr = (testX @ hatbeta2) - y[numtrain:,:]
-    bprederr = (np.transpose(prederr) @ prederr).squeeze()
-    return uprederr - bprederr
-
-def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),bias=0):
-    numtrain = int(0.9*numdata)
-    numtest = numdata - numtrain
-    numfeat = 1+len(m1weight)+len(m2weight)
-    m2start = 1+len(m1weight)
-
-    xs = np.random.normal(size=(numdata,numfeat))
-    xs[:,0] = 1
-    
-    realbeta = [1]+list(m1weight) + list(m2weight)
-    realbeta = np.array(realbeta).reshape(-1,1)
-
-    y = xs @ realbeta
-    y += np.random.normal(size=(y.shape))
-    y += bias
-
-    # do the first model
-    X = xs[:numtrain,:m2start]
-    Y = y[:numtrain,:]
-    Xt = np.transpose(X)
-    XtX = Xt @ X
-    XtXinv = np.linalg.inv(XtX)
-    hatbeta = XtXinv @ Xt @ Y
-
-    testX = xs[numtrain:,:m2start]
-    prederr = (testX @ hatbeta) - y[numtrain:,:]
-    uprederr = (np.transpose(prederr) @ prederr).squeeze()
-
-    # do the second model
-    X = xs[:numtrain,:]
-    Xt = np.transpose(X)
-    XtX = Xt @ X
-    XtXinv = np.linalg.inv(XtX)
-    hatbeta2 = XtXinv @ Xt @ Y
-
-    testX = xs[numtrain:,:m2start]
-    hatbeta2 = hatbeta2[:m2start]
-
-    prederr = (testX @ hatbeta2) - y[numtrain:,:]
+    m2avg = np.ones((numtest,numfeat-m2start))*X[:numtrain,m2start:].mean(axis=0)
+    testX = np.concatenate((xs[numtrain:,:m2start],
+                            m2avg),axis=1)
+    prederr = (clf.predict(testX)) - y[numtrain:]
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
@@ -588,7 +546,7 @@ def main(fn,numits=1000,xlabel="sample value"):
     _=plt.hist(data,bins=int(N/10))
     plt.ylabel("num of samples")
     plt.xlabel("sample value of "+xlabel)
-    plt.axvline(x=lo,color="k",label="95% confidence lower bound for sample mean")
+    plt.axvline(x=lo,color="r",label="95% confidence lower bound for sample mean")
     plt.legend()
     plt.title("histogram of "+xlabel)
     # plt.plot(xs,data,'rs',xs,ones*lo,'k-',xs,np.zeros(xs.shape),'w-')
@@ -608,8 +566,8 @@ if __name__ == '__main__':
         # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp6(numdata=1000)
         # return exp7(x4weight=1,x1x4weight=0)
-        # return exp8(numdata=1000,m1weight=[1]*200+[0]*0,m2weight=[1],metric="nd")
-        return exp9(numdata=1000,m1weight=[100]*200,m2weight=[1],bias=0)
+        # return exp9(numdata=1000,m1weight=[1]*200,m2weight=[1],metric="benefit",m2bias=[1],useM2avg=True)
+        return exp10(numdata=1000,m1weight=[1]*200,m2weight=[1],m2bias=[1])
 
     # fn(True)
     main(fn,numits=1000,xlabel=xlabel)
