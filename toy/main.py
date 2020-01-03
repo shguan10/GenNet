@@ -438,21 +438,22 @@ def exp7(numdata=1000,corrp = 0.01,x4weight=1,x1x4weight=1):
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
-def exp9(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],useM2avg=True):
+def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],useM2avg=True):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
     numfeat = 1+len(m1weight)+len(m2weight)
     m2start = 1+len(m1weight)
 
-    xs = np.random.normal(size=(numdata,numfeat))
+    xs = np.random.normal(size=(numdata,numfeat)).astype(np.float64)
     xs[:,0] = 1
     xs[:,m2start:]+=np.array(m2bias).reshape(1,-1)
     
     realbeta = [1]+list(m1weight) + list(m2weight)
-    realbeta = np.array(realbeta).reshape(-1,1)
+    realbeta = np.array(realbeta).reshape(-1,1).astype(np.float64)
 
     y = xs @ realbeta
     y += np.random.normal(size=(y.shape))
+    y -= np.array(m2bias).mean()
 
     # do the first model
     X = xs[:numtrain,:m2start]
@@ -482,18 +483,18 @@ def exp9(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],us
     if metric=="benefit": return uprederr - bprederr
     else: return np.sum(hatbeta*hatbeta).squeeze()-np.sum(hatbeta2[:-1]*hatbeta2[:-1]).squeeze()
 
-def exp10(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
+def exp11(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
     numfeat = 1+len(m1weight)+len(m2weight)
     m2start = 1+len(m1weight)
 
-    xs = np.random.normal(size=(numdata,numfeat))
+    xs = np.random.normal(size=(numdata,numfeat)).astype(np.float64)
     xs[:,0] = 1
     xs[:,m2start:]+=np.array(m2bias).reshape(1,-1)
     
     realbeta = [1]+list(m1weight) + list(m2weight)
-    realbeta = np.array(realbeta).reshape(-1,1)
+    realbeta = np.array(realbeta).reshape(-1,1).astype(np.float64)
 
     y = xs @ realbeta
     y += np.random.normal(size=(y.shape))
@@ -559,15 +560,15 @@ if __name__ == '__main__':
     # print(tte)
     # print("ols - tt, ",olse-tte)
     xlabel="mm benefit"
-    # xlabel="diff in norm (control - mm)"
+    xlabel="diff in norm (control - mm)"
     def fn(show=False):
         # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
         # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp6(numdata=1000)
         # return exp7(x4weight=1,x1x4weight=0)
-        # return exp9(numdata=1000,m1weight=[1]*200,m2weight=[1],metric="benefit",m2bias=[1],useM2avg=True)
-        return exp10(numdata=1000,m1weight=[1]*200,m2weight=[1],m2bias=[1])
+        return exp10(numdata=1000,m1weight=[1]*200,m2weight=[10],metric="norm",m2bias=[1],useM2avg=True)
+        # return exp11(numdata=1000,m1weight=[1]*200,m2weight=[1],m2bias=[1])
 
     # fn(True)
     main(fn,numits=1000,xlabel=xlabel)
