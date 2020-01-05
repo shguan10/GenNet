@@ -438,7 +438,8 @@ def exp7(numdata=1000,corrp = 0.01,x4weight=1,x1x4weight=1):
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
-def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],useM2avg=True):
+def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],useM2avg=True,showBeta=False):
+    # numdata*=10
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
     numfeat = 1+len(m1weight)+len(m2weight)
@@ -448,12 +449,13 @@ def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],u
     xs[:,0] = 1
     xs[:,m2start:]+=np.array(m2bias).reshape(1,-1)
     
-    realbeta = [1]+list(m1weight) + list(m2weight)
+    m2bias = np.array(m2bias).mean()
+    # realbeta = [-m2bias]+list(m1weight) + list(m2weight)
+    realbeta = [0]+list(m1weight) + list(m2weight)
     realbeta = np.array(realbeta).reshape(-1,1).astype(np.float64)
 
     y = xs @ realbeta
     y += np.random.normal(size=(y.shape))
-    y -= np.array(m2bias).mean()
 
     # do the first model
     X = xs[:numtrain,:m2start]
@@ -473,6 +475,16 @@ def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],u
     XtX = Xt @ X
     XtXinv = np.linalg.inv(XtX)
     hatbeta2 = XtXinv @ Xt @ Y
+
+    if showBeta:
+        plt.plot(hatbeta,'g',label="control hatbeta")
+        plt.plot(hatbeta2,'r',label="mm hatbeta")
+        plt.plot(realbeta,"b--",label="real beta")
+        plt.xlabel("index of (hat)beta")
+        plt.legend()
+        plt.title("hatbeta for M2 ~ N(%.1f,1)"%m2bias)
+        plt.show()
+        pdb.set_trace()
 
     m2avg = np.ones((numtest,numfeat-m2start))*X[:numtrain,m2start:].mean(axis=0)
     m2avg*= useM2avg
@@ -560,15 +572,15 @@ if __name__ == '__main__':
     # print(tte)
     # print("ols - tt, ",olse-tte)
     xlabel="mm benefit"
-    xlabel="diff in norm (control - mm)"
+    # xlabel="diff in norm (control - mm)"
     def fn(show=False):
         # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
         # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp6(numdata=1000)
         # return exp7(x4weight=1,x1x4weight=0)
-        return exp10(numdata=1000,m1weight=[1]*200,m2weight=[10],metric="norm",m2bias=[1],useM2avg=True)
-        # return exp11(numdata=1000,m1weight=[1]*200,m2weight=[1],m2bias=[1])
+        return exp10(numdata=10000,m1weight=[1]*200,m2weight=[1],metric="benefit",m2bias=[0],useM2avg=True,showBeta=True)
+        # return exp11(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
 
     # fn(True)
     main(fn,numits=1000,xlabel=xlabel)
