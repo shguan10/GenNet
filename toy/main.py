@@ -438,7 +438,13 @@ def exp7(numdata=1000,corrp = 0.01,x4weight=1,x1x4weight=1):
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
-def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],useM2avg=True,showBeta=False):
+BENEFIT = 0
+DIFFNORM = 1
+BIAS = 2
+NORMDIFF = 3
+DIFFDOTREAL = 4
+
+def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False):
     # numdata*=10
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
@@ -492,8 +498,11 @@ def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric="benefit",m2bias=[0],u
                             m2avg),axis=1)
     prederr = (testX @ hatbeta2) - y[numtrain:,:]
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
-    if metric=="benefit": return uprederr - bprederr
-    else: return np.sum(hatbeta*hatbeta).squeeze()-np.sum(hatbeta2[:-1]*hatbeta2[:-1]).squeeze()
+    if metric==BENEFIT: return uprederr - bprederr
+    elif metric==BIAS: return (hatbeta[0]-hatbeta2[0]).squeeze()
+    elif metric==DIFFNORM: return np.sum(hatbeta*hatbeta).squeeze()-np.sum(hatbeta2[:-1]*hatbeta2[:-1]).squeeze()
+    elif metric==NORMDIFF: return np.sum((hatbeta-hatbeta2[:-1])**2).squeeze()
+    elif metric==DIFFDOTREAL: return np.sum((hatbeta2[:-1]-hatbeta)*realbeta[:-1]).squeeze()
 
 def exp11(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
     numtrain = int(0.9*numdata)
@@ -571,15 +580,19 @@ if __name__ == '__main__':
     # print(olse)
     # print(tte)
     # print("ols - tt, ",olse-tte)
-    xlabel="mm benefit"
-    # xlabel="diff in norm (control - mm)"
+    metric = DIFFDOTREAL
+    if metric==BENEFIT: xlabel="mm benefit"
+    elif metric==DIFFNORM:  xlabel="diff in norm (control - mm)"
+    elif metric==NORMDIFF:  xlabel="norm of the diff in hatbeta of M1"
+    elif metric==BIAS: xlabel="diff in hatbeta[0] (control - mm)"
+    elif metric==DIFFDOTREAL: xlabel="diff in hatbeta dot product with realbeta (mm - control)"
     def fn(show=False):
         # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
         # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp6(numdata=1000)
         # return exp7(x4weight=1,x1x4weight=0)
-        return exp10(numdata=10000,m1weight=[1]*200,m2weight=[1],metric="benefit",m2bias=[0],useM2avg=True,showBeta=True)
+        return exp10(numdata=10000,m1weight=[1]*200,m2weight=[1],m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
         # return exp11(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
 
     # fn(True)
