@@ -9,7 +9,7 @@ import pdb
 
 import matplotlib.pyplot as plt
 
-from models import *
+from translate import *
 from scipy import stats
 import sklearn as sk
 from sklearn import svm
@@ -293,106 +293,6 @@ def exp5(numdata=1000,m2weight=(1,0.01,1,0)):
     benefit = uprederr - bprederr
     return benefit
 
-def exp6(numdata=1000):
-    numtrain = int(0.9*numdata)
-    numtest = numdata - numtrain
-    numfeat = 100
-    
-    xs = np.random.normal(size=(numdata,numfeat))
-    xs[:,0] = 1
-    xs = xs.astype(np.float32)
-    trainxs = xs[:numtrain,:]
-    testxs = xs[numtrain:,:]
-    trainxs = torch.tensor(trainxs)
-    testxs = torch.tensor(testxs)
-
-    realbetay = np.zeros((numfeat,1))
-    realbetay[1,:] = 1
-    realbetay[2,:]=-1
-    y = xs @ realbetay
-    y += np.random.normal(size=(y.shape))
-    y = y.astype(np.float32)
-    y = torch.tensor(y)
-    trainy = y[:numtrain,:]
-    testy = y[numtrain:,:]
-
-    realbetaz = np.zeros((numfeat,1))
-    realbetaz[1:4,:] = 1
-    z = xs @ realbetaz
-    z += np.random.normal(size=(z.shape))
-    z = z.astype(np.float32)
-    z = torch.tensor(z)
-    trainz = z[:numtrain,:]
-    testz = z[numtrain:,:]
-
-    # one modality
-    model = Model_Exp6(numfeat,10)
-    optimizer = torch.optim.SGD(model.parameters(), 
-                                lr=0.001)
-    # train the model
-    bsize=10
-    numits = int(numtrain/bsize)
-    for _ in range(1000):
-        idxs = np.random.rand(numits,bsize) * trainxs.shape[0]
-        idxs = idxs.astype(np.int64)
-        for start in range(numits):
-            optimizer.zero_grad()
-            data = trainxs[idxs[start]]
-            by = y[idxs[start]]
-            by = by.reshape(-1,1)
-
-            loss = model.forwardy(data,by) / bsize
-            loss.backward()
-            optimizer.step()
-    # test the model
-    model.eval()
-    testy = y[numtrain:,:]
-    with torch.no_grad(): 
-        testloss = model.forwardy(testxs,testy).numpy()
-        
-    testloss1 = testloss / testxs.shape[0]
-
-    # experimental model
-    model = Model_Exp6(numfeat,10)
-    optimizer = torch.optim.SGD(model.parameters(), 
-                                lr=0.001)
-    # pretrain the model
-    for _ in range(1000):
-        idxs = np.random.rand(numits,bsize) * trainxs.shape[0]
-        idxs = idxs.astype(np.int64)
-        for start in range(numits):
-            optimizer.zero_grad()
-            data = trainxs[idxs[start]]
-            by = z[idxs[start]]
-            by = by.reshape(-1,1)
-
-            loss = model.forwardz(data,by) / bsize
-            loss.backward()
-            optimizer.step()
-    # train the model
-    for _ in range(1000):
-        idxs = np.random.rand(numits,bsize) * trainxs.shape[0]
-        idxs = idxs.astype(np.int64)
-        for start in range(numits):
-            optimizer.zero_grad()
-            data = trainxs[idxs[start]]
-            by = y[idxs[start]]
-            by = by.reshape(-1,1)
-
-            loss = model.forwardy(data,by) / bsize
-            loss.backward()
-            optimizer.step()
-    # test the model
-    model.eval()
-    testy = y[numtrain:,:]
-    with torch.no_grad(): 
-        testloss = model.forwardy(testxs,testy).numpy()
-
-    testloss2 = testloss / testxs.shape[0]
-    # print(testloss1)
-    # print(testloss2)
-    return testloss1-testloss2
-
 def exp7(numdata=1000,corrp = 0.01,x4weight=1,x1x4weight=1):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
@@ -444,7 +344,7 @@ BIAS = 2
 NORMDIFF = 3
 DIFFDOTREAL = 4
 
-def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),corrN=0,corrScale=1,metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False):
+def linear_reg_exp(numdata=1000,m1weight=(1,),m2weight=(1,),corrN=0,corrScale=1,metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False):
     assert corrN < len(m2weight)
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
@@ -527,7 +427,7 @@ def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),corrN=0,corrScale=1,metric=BE
     elif metric==NORMDIFF: return np.sum((hatbeta-hatbeta2[:-1])**2).squeeze()
     elif metric==DIFFDOTREAL: return np.sum((hatbeta2[:-1]-hatbeta)*realbeta[:-1]).squeeze()
 
-def exp11(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
+def svm_exp(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
     numfeat = 1+len(m1weight)+len(m2weight)
@@ -616,10 +516,10 @@ if __name__ == '__main__':
         # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
         # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
-        # return exp6(numdata=1000)
         # return exp7(x4weight=1,x1x4weight=0)
-        return exp10(numdata=10000,m1weight=[1]*100,m2weight=[1]*c2,corrN=corrN,corrScale=corrScale,m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
-        # return exp11(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
+        # return linear_reg_exp(numdata=10000,m1weight=[1]*100,m2weight=[1]*c2,corrN=corrN,corrScale=corrScale,m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
+        # return svm_exp(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
+        return translate_exp(numdata=1000)
 
     # fn(True)
-    main(fn,numits=1000,xlabel=xlabel)
+    main(fn,numits=30,xlabel=xlabel)

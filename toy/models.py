@@ -1,6 +1,6 @@
 import torch
 import pdb
-
+import numpy as np
 class Translate(torch.nn.Module):
     def __init__(self,numx1s,numx2s,numhs):
         torch.nn.Module.__init__(self)
@@ -72,3 +72,39 @@ class OLS(torch.nn.Module):
         loss = self.linear(x)-y
         # pdb.set_trace()
         return (loss.t() @ loss).squeeze()
+
+
+class Model_Exp6(torch.nn.Module):
+    def __init__(self,indim,hiddim,zdim=1,ydim=1):
+        torch.nn.Module.__init__(self)
+        self.inhid = torch.nn.Linear(indim,hiddim,bias=False)
+        self.hidz = torch.nn.Linear(hiddim,zdim)
+        self.hidy = torch.nn.Linear(hiddim,ydim)
+
+    def forwardy(self,x,y):
+        h = self.inhid(x)
+        # h = torch.sigmoid(h)
+        yprime = self.hidy(h)
+        error = y - yprime
+        return (error.t() @ error).trace().squeeze()
+
+    def forwardz(self,x,z):
+        h = self.inhid(x)
+        # h = torch.sigmoid(h)
+        zprime = self.hidz(h)
+        error = z - zprime
+        return (error.t() @ error).trace().squeeze()
+
+def train_model6(model,optimizer,trainxs,trainys,numits=10,bsize=10):
+    for _ in range(1000):
+        idxs = np.random.rand(numits,bsize) * trainxs.shape[0]
+        idxs = idxs.astype(np.int64)
+        for start in range(numits):
+            optimizer.zero_grad()
+            data = trainxs[idxs[start]]
+            by = trainys[idxs[start]]
+            by = by.reshape(-1,trainys.shape[1])
+
+            loss = model.forwardz(data,by) / bsize
+            loss.backward()
+            optimizer.step()
