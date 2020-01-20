@@ -444,16 +444,20 @@ BIAS = 2
 NORMDIFF = 3
 DIFFDOTREAL = 4
 
-def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False):
-    # numdata*=10
+def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),corrN=0,corrScale=1,metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False):
+    assert corrN < len(m2weight)
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
-    numfeat = 1+len(m1weight)+len(m2weight)
-    m2start = 1+len(m1weight)
+    C1 = len(m1weight)
+    C2 = len(m2weight)
+    numfeat = 1+C1+C2
+    m2start = 1+C1
+    m2corrstart = m2start + C2 - corrN
 
     xs = np.random.normal(size=(numdata,numfeat)).astype(np.float64)
     xs[:,0] = 1
     xs[:,m2start:]+=np.array(m2bias).reshape(1,-1)
+    xs[:,m2corrstart:] += xs[:,:corrN] * corrScale
     
     m2bias = np.array(m2bias).mean()
     # realbeta = [-m2bias]+list(m1weight) + list(m2weight)
@@ -498,7 +502,26 @@ def exp10(numdata=1000,m1weight=(1,),m2weight=(1,),metric=BENEFIT,m2bias=[0],use
                             m2avg),axis=1)
     prederr = (testX @ hatbeta2) - y[numtrain:,:]
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
-    if metric==BENEFIT: return uprederr - bprederr
+    if metric==BENEFIT: 
+        # M1 = xs[:numtrain,:-1]
+        # M1p= xs[numtrain:,:-1]
+        # M2 = xs[:numtrain,-1].reshape(-1,1)
+        # M2p= xs[numtrain:,-1].reshape(-1,1)
+        # M1t = M1.transpose()
+        # B = M1p @ np.linalg.inv(M1t @ M1)@ M1t @ M2
+        # v = (B**2).sum()
+        
+        # V = M1p @ np.linalg.inv(M1t @ M1)@ M1t
+        # v = (V.transpose() @ V).trace()
+
+        # H = M1 @ np.linalg.inv(M1t@M1) @ M1t
+        # v = H.trace()
+        # v = (M2p*l).sum()
+        # v = (l**2).sum()-2*(M2p*l).sum()
+        # v = ((M2p - l)**2).sum()
+        # l = (l**2).sum()
+        # r = 4 * (M2p**2).sum()
+        return uprederr - bprederr
     elif metric==BIAS: return (hatbeta[0]-hatbeta2[0]).squeeze()
     elif metric==DIFFNORM: return np.sum(hatbeta*hatbeta).squeeze()-np.sum(hatbeta2[:-1]*hatbeta2[:-1]).squeeze()
     elif metric==NORMDIFF: return np.sum((hatbeta-hatbeta2[:-1])**2).squeeze()
@@ -580,19 +603,22 @@ if __name__ == '__main__':
     # print(olse)
     # print(tte)
     # print("ols - tt, ",olse-tte)
-    metric = DIFFDOTREAL
+    metric = BENEFIT
     if metric==BENEFIT: xlabel="mm benefit"
     elif metric==DIFFNORM:  xlabel="diff in norm (control - mm)"
     elif metric==NORMDIFF:  xlabel="norm of the diff in hatbeta of M1"
     elif metric==BIAS: xlabel="diff in hatbeta[0] (control - mm)"
     elif metric==DIFFDOTREAL: xlabel="diff in hatbeta dot product with realbeta (mm - control)"
+    corrN=199
+    c2 = 1+corrN
+    corrScale = 0.0625
     def fn(show=False):
         # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
         # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp6(numdata=1000)
         # return exp7(x4weight=1,x1x4weight=0)
-        return exp10(numdata=10000,m1weight=[1]*200,m2weight=[1],m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
+        return exp10(numdata=10000,m1weight=[1]*100,m2weight=[1]*c2,corrN=corrN,corrScale=corrScale,m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
         # return exp11(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
 
     # fn(True)
