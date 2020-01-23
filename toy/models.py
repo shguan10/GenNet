@@ -135,12 +135,12 @@ class Simple_Deep_Regression(torch.nn.Module):
         y = self.betah_ky(h)
         return y
 
-def train_sdr(model,optimizer,trainm1,trainm2,labels,bsize=10):
-    sumloss = 0
+def train_sdr(model,optimizer,trainm1,trainm2,labels,bsize=10,verbose=False):
     numtrain = trainm1.shape[0]
     numbatches = int(numtrain / bsize)
-    numepochs = 1000
+    numepochs = 100
     for epoch in range(numepochs):
+        epochloss = 0
         idxs = np.arange(numtrain)
         np.random.shuffle(idxs)
         for start in range(numbatches):
@@ -152,7 +152,7 @@ def train_sdr(model,optimizer,trainm1,trainm2,labels,bsize=10):
 
             py = model.forward(m1,m2)
             loss = ((py - by)**2).sum() / bsize / 2
-            sumloss+=loss
+            epochloss+=loss
             # if start==0:
                 # print("\npy",py)
                 # pdb.set_trace()
@@ -163,5 +163,6 @@ def train_sdr(model,optimizer,trainm1,trainm2,labels,bsize=10):
             # if epoch==0 and start==43: pdb.set_trace()
             # if (model.beta2.weight.grad!=model.beta2.weight.grad).any(): pdb.set_trace()
             optimizer.step()
-        print("epoch: ",epoch,"/",numepochs-1,
-          ", avg loss per sample: %.4f" %(sumloss/(epoch+1)/numbatches/bsize), end="\r" if epoch<numepochs-1 else "\n")
+        if verbose:
+            print("epoch: ",epoch,"/",numepochs-1,
+              ", avg loss per sample: %.4f" %(epochloss/numbatches/bsize), end="\r" if epoch<numepochs-1 else "\n")
