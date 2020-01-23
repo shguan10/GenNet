@@ -9,11 +9,13 @@ import pdb
 
 import matplotlib.pyplot as plt
 
-from translate import *
 from scipy import stats
 import sklearn as sk
 from sklearn import svm
 from tqdm import tqdm
+
+from translate import *
+from deep_regression import *
 
 def genpoint(stdnorm=np.random.normal,size=10):
     xs = stdnorm(size=size)
@@ -519,7 +521,8 @@ if __name__ == '__main__':
         # return exp7(x4weight=1,x1x4weight=0)
         # return linear_reg_exp(numdata=10000,m1weight=[1]*100,m2weight=[1]*c2,corrN=corrN,corrScale=corrScale,m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
         # return svm_exp(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
-        return translate_exp(numdata=1000)
+        # return translate_exp(numdata=1000)
+        return simple_deep_regression_exp(lenM1=100,lenM2=1,lenH=2)
 
     # fn(True)
     main(fn,numits=30,xlabel=xlabel)

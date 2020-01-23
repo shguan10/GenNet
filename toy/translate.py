@@ -39,14 +39,15 @@ def translate_exp(numdata=1000):
     testz = z[numtrain:,:]
 
     bsize=10
-    # numits = int(numtrain/bsize)
-    numits = 10
+    numits = int(numtrain/bsize)
+    # numits = 10
 
     # control: one modality
     model = Model_Exp6(numxfeat,10)
     optimizer = torch.optim.SGD(model.parameters(), 
                             lr=0.001)
-    train_model6(model,optimizer,trainxs,trainy,numits=10,bsize=10)
+    print("control")
+    train_model6(model,optimizer,trainxs,trainy,numits=numits,bsize=bsize)
     model.eval()
     testy = y[numtrain:,:]
     with torch.no_grad(): 
@@ -58,14 +59,16 @@ def translate_exp(numdata=1000):
     model = Model_Exp6(numxfeat,10,zdim=3)
     optimizer = torch.optim.SGD(model.parameters(), 
                                 lr=0.001)
-    train_model6(model,optimizer,trainxs,trainz,numits=10,bsize=10)
-    train_model6(model,optimizer,trainxs,trainy,numits=10,bsize=10)
+    print("pretrain")
+    train_model6(model,optimizer,trainxs,trainz,predzs=True,numits=numits,bsize=bsize)
+    train_model6(model,optimizer,trainxs,trainy,finetune=True,numits=numits,bsize=bsize)
     model.eval()
     testy = y[numtrain:,:]
     with torch.no_grad(): 
         testloss = model.forwardy(testxs,testy).numpy()
 
     testloss2 = testloss / testxs.shape[0]
+
 
     # print(testloss1)
     # print(testloss2)

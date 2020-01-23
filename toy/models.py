@@ -1,6 +1,10 @@
 import torch
 import pdb
 import numpy as np
+
+# torch.manual_seed(0)
+# np.random.seed(8944)
+
 class Translate(torch.nn.Module):
     def __init__(self,numx1s,numx2s,numhs):
         torch.nn.Module.__init__(self)
@@ -88,23 +92,76 @@ class Model_Exp6(torch.nn.Module):
         error = y - yprime
         return (error.t() @ error).trace().squeeze()
 
-    def forwardz(self,x,z):
+    def forwardz(self,x,z,debug=False):
         h = self.inhid(x)
         # h = torch.sigmoid(h)
         zprime = self.hidz(h)
         error = z - zprime
-        return (error.t() @ error).trace().squeeze()
+        error = (error.t() @ error).trace().squeeze() 
+        if debug: pdb.set_trace()
+        return error
 
-def train_model6(model,optimizer,trainxs,trainys,numits=10,bsize=10):
-    for _ in range(1000):
+def train_model6(model,optimizer,trainxs,labels,predzs=False,finetune=False,numits=10,bsize=10):
+    sumloss = 0
+    numepochs = 1000 if predzs or finetune else 2*1000
+    for epoch in range(numepochs):
         idxs = np.random.rand(numits,bsize) * trainxs.shape[0]
         idxs = idxs.astype(np.int64)
         for start in range(numits):
             optimizer.zero_grad()
             data = trainxs[idxs[start]]
-            by = trainys[idxs[start]]
-            by = by.reshape(-1,trainys.shape[1])
+            by = labels[idxs[start]]
+            by = by.reshape(-1,labels.shape[1])
 
-            loss = model.forwardz(data,by) / bsize
+            if predzs: loss = model.forwardz(data,by) / bsize
+            else: loss = model.forwardy(data,by) / bsize
+            sumloss+=loss
             loss.backward()
             optimizer.step()
+        print("it: ",epoch,"/",numepochs-1,
+          ", avg loss per sample: %.4f" %(sumloss/(epoch+1)/numits/bsize), end="\r" if epoch<numepochs-1 else "\n")
+
+class Simple_Deep_Regression(torch.nn.Module):
+    def __init__(self,m1dim,m2dim,hiddim,ydim=1):
+        torch.nn.Module.__init__(self)
+        self.beta1_kh = torch.nn.Linear(m1dim,hiddim,bias=True).double()
+        self.beta2 = torch.nn.Linear(m2dim,hiddim,bias=False).double()
+        self.betah_ky = torch.nn.Linear(hiddim,ydim,bias=True).double()
+        
+    def forward(self,m1,m2):
+        h = self.beta1_kh(m1)
+        h += self.beta2(m2)
+        h = torch.relu(h)
+        y = self.betah_ky(h)
+        return y
+
+def train_sdr(model,optimizer,trainm1,trainm2,labels,bsize=10):
+    sumloss = 0
+    numtrain = trainm1.shape[0]
+    numbatches = int(numtrain / bsize)
+    numepochs = 1000
+    for epoch in range(numepochs):
+        idxs = np.arange(numtrain)
+        np.random.shuffle(idxs)
+        for start in range(numbatches):
+            optimizer.zero_grad()
+            m1 = trainm1[idxs[start:start+bsize]]
+            m2 = trainm2[idxs[start:start+bsize]]
+            by = labels[idxs[start:start+bsize]]
+            by = by.reshape(-1,labels.shape[1])
+
+            py = model.forward(m1,m2)
+            loss = ((py - by)**2).sum() / bsize / 2
+            sumloss+=loss
+            # if start==0:
+                # print("\npy",py)
+                # pdb.set_trace()
+                # print("by",by)
+            loss.backward()
+            # print(epoch,start)
+            # print(model.betah_ky.weight)
+            # if epoch==0 and start==43: pdb.set_trace()
+            # if (model.beta2.weight.grad!=model.beta2.weight.grad).any(): pdb.set_trace()
+            optimizer.step()
+        print("epoch: ",epoch,"/",numepochs-1,
+          ", avg loss per sample: %.4f" %(sumloss/(epoch+1)/numbatches/bsize), end="\r" if epoch<numepochs-1 else "\n")
