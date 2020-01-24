@@ -516,7 +516,8 @@ if __name__ == '__main__':
     corrScale = 0.0625
     lenM1=10
     lenM2=10
-    lenH = 1000
+    lenH = 100
+    actualH = 10
     def fn(show=False):
         # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
         # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
@@ -525,7 +526,7 @@ if __name__ == '__main__':
         # return linear_reg_exp(numdata=10000,m1weight=[1]*100,m2weight=[1]*c2,corrN=corrN,corrScale=corrScale,m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
         # return svm_exp(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
         # return translate_exp(numdata=1000)
-        return simple_deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,verbose=False)
-    # genbetas(lenM1,lenM2,lenH,save="sdrbetas.pk")
+        return simple_deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,verbose=True)
+    genbetas(lenM1,lenM2,actualH,save="sdrbetas.pk")
     # fn(True)
     main(fn,numits=1000,xlabel=xlabel)

@@ -138,7 +138,7 @@ class Simple_Deep_Regression(torch.nn.Module):
 def train_sdr(model,optimizer,trainm1,trainm2,labels,bsize=10,verbose=False):
     numtrain = trainm1.shape[0]
     numbatches = int(numtrain / bsize)
-    numepochs = 100
+    numepochs = 200
     for epoch in range(numepochs):
         epochloss = 0
         idxs = np.arange(numtrain)

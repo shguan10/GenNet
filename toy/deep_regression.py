@@ -6,17 +6,17 @@ import time
 
 import pickle as pk
 
-def genbetas(numM1,numM2,numH=500,numY=1,seed=None,save="sdrbetas.pk",load=None):
+def genbetas(numM1,numM2,numH=500,numY=1,seed=None,save="sdrbetas.pk",load=None,ftype=np.float64):
     # generates the real betas for the specified parameters
     if load is not None:
         with open(load,"rb") as f: data = pk.load(f)
         return data
     if seed is not None: np.random.seed(seed)
-    betaH = np.random.normal(size=(numH,numY)).astype(np.float32)
-    ky = np.random.normal(size=(1,numY)).astype(np.float32)
-    beta1 = np.random.normal(size=(numM1,numH)).astype(np.float32)
-    beta2 = np.random.normal(size=(numM2,numH)).astype(np.float32)
-    kh = np.random.normal(size=(1,numH)).astype(np.float32)
+    betaH = np.random.normal(size=(numH,numY)).astype(ftype)
+    ky = np.random.normal(size=(1,numY)).astype(ftype)
+    beta1 = np.random.normal(size=(numM1,numH)).astype(ftype)
+    beta2 = np.random.normal(size=(numM2,numH)).astype(ftype)
+    kh = np.random.normal(size=(1,numH)).astype(ftype)
     if save is not None:
         with open(save,"wb") as f: pk.dump((betaH,ky,beta1,beta2,kh),f)
     return (betaH,ky,beta1,beta2,kh)
@@ -33,7 +33,7 @@ def simple_deep_regression_exp(numdata=1000,lenM1=200,lenM2=1,lenH=500,verbose=F
     # print(seed)
     # time.sleep(1)
 
-    (betaH,ky,beta1,beta2,kh) = genbetas(lenM1,lenM2,lenH,load="sdrbetas.pk")
+    (betaH,ky,beta1,beta2,kh) = genbetas(lenM1,lenM2,lenH,load="sdrbetas.pk",ftype=ftype)
     h = (m1@beta1 + m2@beta2 + kh)
     h = (h>0)*h
     y = h@betaH + ky
