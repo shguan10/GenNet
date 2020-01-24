@@ -1,5 +1,5 @@
-data/*
+data/
 *.pt
 *.npy
 
-__pycache__/*
+__pycache__/

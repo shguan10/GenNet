@@ -121,21 +121,27 @@ def train_model6(model,optimizer,trainxs,labels,predzs=False,finetune=False,numi
         print("it: ",epoch,"/",numepochs-1,
           ", avg loss per sample: %.4f" %(sumloss/(epoch+1)/numits/bsize), end="\r" if epoch<numepochs-1 else "\n")
 
-class Simple_Deep_Regression(torch.nn.Module):
-    def __init__(self,m1dim,m2dim,hiddim,ydim=1):
+class Deep_Regression(torch.nn.Module):
+    def __init__(self,m1dim,m2dim,hiddim,numHlayers=1,ydim=1):
         torch.nn.Module.__init__(self)
         self.beta1_kh = torch.nn.Linear(m1dim,hiddim,bias=True).double()
         self.beta2 = torch.nn.Linear(m2dim,hiddim,bias=False).double()
-        self.betah_ky = torch.nn.Linear(hiddim,ydim,bias=True).double()
+        paramsH = []
+        for layer in range(numHlayers):
+            lendest = ydim if layer==numHlayers-1 else hiddim
+            l = torch.nn.Linear(hiddim,lendest,bias=True).double()
+            paramsH.append(l)
+        self.paramsH = torch.nn.ModuleList(paramsH)
         
     def forward(self,m1,m2):
-        h = self.beta1_kh(m1)
-        h += self.beta2(m2)
+        h = self.beta1_kh(m1) + self.beta2(m2)
         h = torch.relu(h)
-        y = self.betah_ky(h)
-        return y
+        for m in self.paramsH:
+            h = m(h)
+            h = torch.relu(h)
+        return h
 
-def train_sdr(model,optimizer,trainm1,trainm2,labels,bsize=10,verbose=False):
+def train_dr(model,optimizer,trainm1,trainm2,labels,bsize=10,verbose=False):
     numtrain = trainm1.shape[0]
     numbatches = int(numtrain / bsize)
     numepochs = 200
