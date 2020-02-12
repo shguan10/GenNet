@@ -136,24 +136,25 @@ class Deep_Regression(torch.nn.Module):
     def forward(self,m1,m2):
         h = self.beta1_kh(m1) + self.beta2(m2)
         h = torch.relu(h)
-        for m in self.paramsH:
+        for ind,m in enumerate(self.paramsH):
             h = m(h)
-            h = torch.relu(h)
+            if ind<len(self.paramsH)-1: h = torch.relu(h)
         return h
 
-def train_dr(model,optimizer,trainm1,trainm2,labels,bsize=10,verbose=False):
+def train_dr(model,optimizer,trainm1,trainm2,labels,bsize=10,verbose=False,early_stop=0.001,numepochs = 200):
     numtrain = trainm1.shape[0]
     numbatches = int(numtrain / bsize)
-    numepochs = 200
     for epoch in range(numepochs):
         epochloss = 0
-        idxs = np.arange(numtrain)
-        np.random.shuffle(idxs)
-        for start in range(numbatches):
+        idxs = (np.random.rand(numbatches,bsize)*numtrain).astype(np.int64)
+        # idxs = np.arange(numtrain)
+        # np.random.shuffle(idxs)
+        # for start in range(numbatches):
+        for batch in idxs:
             optimizer.zero_grad()
-            m1 = trainm1[idxs[start:start+bsize]]
-            m2 = trainm2[idxs[start:start+bsize]]
-            by = labels[idxs[start:start+bsize]]
+            m1 = trainm1[batch]
+            m2 = trainm2[batch]
+            by = labels[batch]
             by = by.reshape(-1,labels.shape[1])
 
             py = model.forward(m1,m2)
@@ -162,13 +163,16 @@ def train_dr(model,optimizer,trainm1,trainm2,labels,bsize=10,verbose=False):
             # if start==0:
                 # print("\npy",py)
                 # pdb.set_trace()
-                # print("by",by)
+                # print("by",by)self.paramsH
             loss.backward()
             # print(epoch,start)
             # print(model.betah_ky.weight)
             # if epoch==0 and start==43: pdb.set_trace()
             # if (model.beta2.weight.grad!=model.beta2.weight.grad).any(): pdb.set_trace()
             optimizer.step()
+        avgsampleloss = (epochloss/numbatches/bsize)
         if verbose:
             print("epoch: ",epoch,"/",numepochs-1,
-              ", avg loss per sample: %.4f" %(epochloss/numbatches/bsize), end="\r" if epoch<numepochs-1 else "\n")
+              ", avg loss per sample: %.4f" %avgsampleloss, end="\r" if epoch<numepochs-1 else "\n")
+        if avgsampleloss < early_stop: 
+            break

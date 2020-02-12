@@ -345,11 +345,11 @@ DIFFNORM = 1
 BIAS = 2
 NORMDIFF = 3
 DIFFDOTREAL = 4
+DIFFTHEORY = 5
 
-def linear_reg_exp(numdata=1000,m1weight=(1,),m2weight=(1,),corrN=0,corrScale=1,metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False):
-    assert corrN < len(m2weight)
-    numtrain = int(0.9*numdata)
-    numtest = numdata - numtrain
+def linear_reg_exp(numtrain=3000,numtest=300,m1weight=(1,),m2weight=(1,),corrN=0,corrScale=1,metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False):
+    # assert corrN < len(m2weight)
+    numdata = numtrain + numtest
     C1 = len(m1weight)
     C2 = len(m2weight)
     numfeat = 1+C1+C2
@@ -392,7 +392,7 @@ def linear_reg_exp(numdata=1000,m1weight=(1,),m2weight=(1,),corrN=0,corrScale=1,
         plt.plot(hatbeta,'g',label="control hatbeta")
         plt.plot(hatbeta2,'r',label="mm hatbeta")
         plt.plot(realbeta,"b--",label="real beta")
-        plt.xlabel("index of (hat)beta")
+        plt.xlabels("index of (hat)beta")
         plt.legend()
         plt.title("hatbeta for M2 ~ N(%.1f,1)"%m2bias)
         plt.show()
@@ -428,6 +428,12 @@ def linear_reg_exp(numdata=1000,m1weight=(1,),m2weight=(1,),corrN=0,corrScale=1,
     elif metric==DIFFNORM: return np.sum(hatbeta*hatbeta).squeeze()-np.sum(hatbeta2[:-1]*hatbeta2[:-1]).squeeze()
     elif metric==NORMDIFF: return np.sum((hatbeta-hatbeta2[:-1])**2).squeeze()
     elif metric==DIFFDOTREAL: return np.sum((hatbeta2[:-1]-hatbeta)*realbeta[:-1]).squeeze()
+    elif metric==DIFFTHEORY:
+        exp = uprederr - bprederr
+        M1=  xs[:numtrain,:m2start]
+        M1p = xs[numtrain:,:m2start]
+        theory = (realbeta[m2start:]**2).sum()*(C1+1)*numtest / (numtrain-C1-2)
+        return theory - exp
 
 def svm_exp(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
     numtrain = int(0.9*numdata)
@@ -469,71 +475,78 @@ def svm_exp(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
-def main(fn,numits=1000,xlabel="sample value"):
+def main(fn,numits=1000,xlabels=["sample value"]):
     N = numits
-    data = np.array([])
+    rawdata = []
     for it in range(N):
         res = fn()
-        data = np.concatenate((data,[res]))
-        mu = data.mean()
-        sigma = data.std(ddof=1) if it>0 else 0
+        rawdata += [res]
+        npdata = np.array(rawdata)
+        mu = npdata.mean(axis=0)
+        sigma = npdata.std(ddof=1,axis=0) if it>0 else 0
         sigma /= np.sqrt(it+1)
         t = sp.stats.t(it)
         p = t.cdf(-mu/sigma) if it>0 else 1
         print("it: ",it,"/",N-1,
-              ", mean: %.4f" %mu,
-              ", std: %.4f"%sigma,
-              ", p value: %.4f"%p,end="\r",flush=True)
+              ", mean: ", mu,
+              ", std: ", sigma,
+              ", p value: ",p,end="\r",flush=True)
     print("\n")
     lo = mu+(t.ppf(0.05)*sigma)
-    # lo = mu+(t.ppf(0.025)*sigma)
-    # hi = mu+(t.ppf(0.975)*sigma)
-    xs = np.arange(N)
-    ones = np.ones(N)
-    _=plt.hist(data,bins=int(N/10))
-    plt.ylabel("num of samples")
-    plt.xlabel("sample value of "+xlabel)
-    plt.axvline(x=lo,color="r",label="95% confidence lower bound for sample mean")
-    plt.legend()
-    plt.title("histogram of "+xlabel)
-    # plt.plot(xs,data,'rs',xs,ones*lo,'k-',xs,np.zeros(xs.shape),'w-')
-    # plt.plot(xs,data,'rs',xs,ones*lo,'g--',xs,ones*hi,'g--')
-    plt.show()
+    for ind,lab in enumerate(xlabels):
+        # lo = mu+(t.ppf(0.025)*sigma)
+        # hi = mu+(t.ppf(0.975)*sigma)
+        xs = np.arange(N)
+        ones = np.ones(N)
+        _=plt.hist(npdata[ind,:],bins=int(N/10))
+        plt.ylabel("num of samples")
+        plt.xlabel("sample value of "+lab)
+        plt.axvline(x=lo[ind],color="r",label="95% confidence lower bound for sample mean")
+        plt.legend()
+        plt.title("histogram of "+lab)
+        # plt.plot(xs,data,'rs',xs,ones*lo,'k-',xs,np.zeros(xs.shape),'w-')
+        # plt.plot(xs,data,'rs',xs,ones*lo,'g--',xs,ones*hi,'g--')
+        plt.show()
 
 if __name__ == '__main__':
-    # olse,tte = exp1()
-    # print(olse)
-    # print(tte)
-    # print("ols - tt, ",olse-tte)
-    metric = BENEFIT
-    if metric==BENEFIT: xlabel="mm benefit"
-    elif metric==DIFFNORM:  xlabel="diff in norm (control - mm)"
-    elif metric==NORMDIFF:  xlabel="norm of the diff in hatbeta of M1"
-    elif metric==BIAS: xlabel="diff in hatbeta[0] (control - mm)"
-    elif metric==DIFFDOTREAL: xlabel="diff in hatbeta dot product with realbeta (mm - control)"
+    # metric = BENEFIT
+    # if metric==BENEFIT: xlabels="mm benefit"
+    # elif metric==DIFFNORM:  xlabels="diff in norm (control - mm)"
+    # elif metric==NORMDIFF:  xlabels="norm of the diff in hatbeta of M1"
+    # elif metric==BIAS: xlabels="diff in hatbeta[0] (control - mm)"
+    # elif metric==DIFFDOTREAL: xlabels="diff in hatbeta dot product with realbeta (mm - control)"
+    # elif metric==DIFFTHEORY: xlabels="diff in mmbenefit (theory - actual)"
 
-    numits=30
+    xlabels = ["mm benefit","testloss1"]
 
-    corrN=199
-    c2 = 1+corrN
-    corrScale = 0.0625
+    numits=1000
 
-    lenM1=10
+    # numtrain=1000
+    # numtest=1000
+    # c1=100
+    # corrN=0
+    # c2 = 1+10
+    # corrScale = 0.0625
+
+    lenM1=20
     lenM2=10
     lenH = 100
     actualH = 10
-    numHlayers = 2
+    numHlayers = 4
+
+    bsize=32
+    numepochs=400
 
     def fn(show=False):
         # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
         # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp7(x4weight=1,x1x4weight=0)
-        # return linear_reg_exp(numdata=10000,m1weight=[1]*100,m2weight=[1]*c2,corrN=corrN,corrScale=corrScale,m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
+        # return linear_reg_exp(numtrain=numtrain,numtest=numtest,m1weight=[1]*c1,m2weight=[1]*c2,corrN=corrN,corrScale=corrScale,m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
         # return svm_exp(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
         # return translate_exp(numdata=1000)
         # return simple_deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,verbose=True)
-        return deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True)
-    genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="sdrbetas.pk")
+        return deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs)
+    genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
     # fn(True)
-    main(fn,numits=numits,xlabel=xlabel)
+    main(fn,numits=numits,xlabels=xlabels)

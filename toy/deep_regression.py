@@ -112,7 +112,7 @@ def genbetas_deep(lenM1,lenM2,lenH,numHlayers=1,lenY=1,seed=None,save="sdrbetas.
         with open(save,"wb") as f: pk.dump(params,f)
     return params
 
-def deep_regression_exp(numdata=1000,lenM1=200,lenM2=1,lenH=500,numHlayers=1,verbose=False):
+def deep_regression_exp(numdata=1000,lenM1=200,lenM2=1,lenH=500,numHlayers=1,verbose=False,bsize=32,numepochs=200):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
 
@@ -124,17 +124,17 @@ def deep_regression_exp(numdata=1000,lenM1=200,lenM2=1,lenH=500,numHlayers=1,ver
     # print(seed)
     # time.sleep(1)
 
-    (paramHs,beta1,beta2,kh) = genbetas_deep(lenM1,lenM2,lenH,numHlayers=numHlayers,load="sdrbetas.pk",ftype=ftype)
+    (paramHs,beta1,beta2,kh) = genbetas_deep(lenM1,lenM2,lenH,numHlayers=numHlayers,load="drbetas.pk",ftype=ftype)
     h = (m1@beta1 + m2@beta2 + kh)
     h = (h>0)*h
-    for beta,k in paramHs:
+    for ind,(beta,k) in enumerate(paramHs):
         h = h@beta + k
-        h = (h>0)*h
+        if ind+1<len(paramHs): h = (h>0)*h
     y = h+np.random.normal(size=h.shape).astype(ftype)
 
-    m1 = torch.tensor(m1)
-    m2 = torch.tensor(m2)
-    y = torch.tensor(y)
+    m1 = torch.tensor(m1).cuda()
+    m2 = torch.tensor(m2).cuda()
+    y = torch.tensor(y).cuda()
 
     trainm1 = m1[:numtrain,:]
     trainm2 = m2[:numtrain,:]
@@ -149,37 +149,37 @@ def deep_regression_exp(numdata=1000,lenM1=200,lenM2=1,lenH=500,numHlayers=1,ver
     trainy = (trainy-trainymu)/trainysigma
     testy = (testy-trainymu)/trainysigma
 
-    m2zeros_train = torch.zeros(trainm2.shape).double()
-    m2zeros_test = torch.zeros(testm2.shape).double()
+    m2zeros_train = torch.zeros(trainm2.shape).double().cuda()
+    m2zeros_test = torch.zeros(testm2.shape).double().cuda()
 
     # control: one modality
     if verbose: print("\ncontrol")
-    model = Deep_Regression(lenM1,lenM2,lenH,numHlayers=numHlayers)
+    model = Deep_Regression(lenM1,lenM2,lenH,numHlayers=numHlayers).cuda()
     optimizer = torch.optim.SGD(model.parameters(), momentum=0.9, nesterov=True,
                                 lr=0.001)
-    train_dr(model,optimizer,trainm1,m2zeros_train,trainy,bsize=10,verbose=verbose)
+    train_dr(model,optimizer,trainm1,m2zeros_train,trainy,bsize=bsize,verbose=verbose,numepochs=numepochs)
     model.eval()
     with torch.no_grad(): 
         testps = model.forward(testm1,m2zeros_test)
-        testloss = ((testps - testy)**2).sum().numpy()
+        testloss = ((testps - testy)**2).sum().cpu().numpy()
         
     testloss1 = testloss / numtest
     if verbose: print("testloss1",testloss1)
 
     # experimental model
     if verbose: print("bimodal")
-    model = Deep_Regression(lenM1,lenM2,lenH,numHlayers=numHlayers)
+    model = Deep_Regression(lenM1,lenM2,lenH,numHlayers=numHlayers).cuda()
     optimizer = torch.optim.SGD(model.parameters(), momentum=0.9, nesterov=True,
                                 lr=0.001)
-    train_dr(model,optimizer,trainm1,trainm2,trainy,bsize=10,verbose=verbose)
+    train_dr(model,optimizer,trainm1,trainm2,trainy,bsize=bsize,verbose=verbose,numepochs=numepochs)
     model.eval()
     with torch.no_grad(): 
         testps = model.forward(testm1,m2zeros_test)
-        testloss = ((testps - testy)**2).sum().numpy()
+        testloss = ((testps - testy)**2).sum().cpu().numpy()
 
     testloss2 = testloss / numtest
     if verbose:
         print("testloss2",testloss2)
         print("benefit",testloss1-testloss2)
 
-    return testloss1-testloss2
+    return [testloss1-testloss2,testloss1]
