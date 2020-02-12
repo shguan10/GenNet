@@ -1,5 +1,6 @@
 data/
 *.pt
 *.npy
+*.jpg
 
 __pycache__/

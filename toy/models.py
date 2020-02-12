@@ -141,7 +141,7 @@ class Deep_Regression(torch.nn.Module):
             if ind<len(self.paramsH)-1: h = torch.relu(h)
         return h
 
-def train_dr(model,optimizer,trainm1,trainm2,labels,bsize=10,verbose=False,early_stop=0.001,numepochs = 200):
+def train_dr(model,optimizer,trainm1,trainm2,labels,testset=None,bsize=10,verbose=False,early_stop=0.001,numepochs=200,datastore=None):
     numtrain = trainm1.shape[0]
     numbatches = int(numtrain / bsize)
     for epoch in range(numepochs):
@@ -171,6 +171,15 @@ def train_dr(model,optimizer,trainm1,trainm2,labels,bsize=10,verbose=False,early
             # if (model.beta2.weight.grad!=model.beta2.weight.grad).any(): pdb.set_trace()
             optimizer.step()
         avgsampleloss = (epochloss/numbatches/bsize)
+        if datastore is not None: 
+            (testm1,m2zeros_test,testy) = testset
+            with torch.no_grad():
+                testps = model.forward(testm1,m2zeros_test)
+                testloss = ((testps - testy)**2).sum().cpu().numpy()
+            testloss /= len(testy)
+
+            datastore.append((avgsampleloss,testloss))
+
         if verbose:
             print("epoch: ",epoch,"/",numepochs-1,
               ", avg loss per sample: %.4f" %avgsampleloss, end="\r" if epoch<numepochs-1 else "\n")

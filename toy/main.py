@@ -498,7 +498,7 @@ def main(fn,numits=1000,xlabels=["sample value"]):
         # hi = mu+(t.ppf(0.975)*sigma)
         xs = np.arange(N)
         ones = np.ones(N)
-        _=plt.hist(npdata[ind,:],bins=int(N/10))
+        _=plt.hist(npdata[:,ind],bins=int(N/10))
         plt.ylabel("num of samples")
         plt.xlabel("sample value of "+lab)
         plt.axvline(x=lo[ind],color="r",label="95% confidence lower bound for sample mean")
@@ -537,7 +537,8 @@ if __name__ == '__main__':
     bsize=32
     numepochs=400
 
-    def fn(show=False):
+    show = True
+    def fn(show=show):
         # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
         # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
         # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
@@ -546,7 +547,7 @@ if __name__ == '__main__':
         # return svm_exp(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
         # return translate_exp(numdata=1000)
         # return simple_deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,verbose=True)
-        return deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs)
-    genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
+        return deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show)
+    # genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
     # fn(True)
     main(fn,numits=numits,xlabels=xlabels)
