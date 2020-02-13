@@ -1,4 +1,4 @@
-import scipy as sp
+# import scipy as sp
 import numpy as np
 
 import pandas as pd
@@ -519,7 +519,7 @@ if __name__ == '__main__':
 
     xlabels = ["mm benefit","testloss1"]
 
-    numits=1000
+    numits=200
 
     # numtrain=1000
     # numtest=1000
@@ -528,7 +528,9 @@ if __name__ == '__main__':
     # c2 = 1+10
     # corrScale = 0.0625
 
-    lenM1=20
+    numdata=10000
+
+    lenM1=30
     lenM2=10
     lenH = 100
     actualH = 10
@@ -536,8 +538,9 @@ if __name__ == '__main__':
 
     bsize=32
     numepochs=400
+    maxpatience = 20
 
-    show = True
+    show = False
     def fn(show=show):
         # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
         # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
@@ -547,7 +550,7 @@ if __name__ == '__main__':
         # return svm_exp(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
         # return translate_exp(numdata=1000)
         # return simple_deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,verbose=True)
-        return deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show)
+        return deep_regression_exp(numdata=numdata,maxpatience=maxpatience,lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show)
     # genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
-    # fn(True)
-    main(fn,numits=numits,xlabels=xlabels)
+    fn(True)
+    # main(fn,numits=numits,xlabels=xlabels)

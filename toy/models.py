@@ -141,9 +141,13 @@ class Deep_Regression(torch.nn.Module):
             if ind<len(self.paramsH)-1: h = torch.relu(h)
         return h
 
-def train_dr(model,optimizer,trainm1,trainm2,labels,testset=None,bsize=10,verbose=False,early_stop=0.001,numepochs=200,datastore=None):
+def train_dr(model,optimizer,trainm1,trainm2,labels,maxpatience = 20,numval=0,testset=None,bsize=10,verbose=False,early_stop=0.001,numepochs=200,datastore=None):
     numtrain = trainm1.shape[0]
+    numtrain -= numval
     numbatches = int(numtrain / bsize)
+
+    patience = maxpatience
+    prevmin = None
     for epoch in range(numepochs):
         epochloss = 0
         idxs = (np.random.rand(numbatches,bsize)*numtrain).astype(np.int64)
@@ -171,6 +175,11 @@ def train_dr(model,optimizer,trainm1,trainm2,labels,testset=None,bsize=10,verbos
             # if (model.beta2.weight.grad!=model.beta2.weight.grad).any(): pdb.set_trace()
             optimizer.step()
         avgsampleloss = (epochloss/numbatches/bsize)
+        with torch.no_grad():
+            zeros = torch.zeros(trainm2[numtrain:].shape).double().cuda()
+            valps = model.forward(trainm1[numtrain:],zeros)
+            valloss = ((valps - labels[numtrain:])**2).sum().cpu().numpy()
+            valloss /= numval
         if datastore is not None: 
             (testm1,m2zeros_test,testy) = testset
             with torch.no_grad():
@@ -178,10 +187,17 @@ def train_dr(model,optimizer,trainm1,trainm2,labels,testset=None,bsize=10,verbos
                 testloss = ((testps - testy)**2).sum().cpu().numpy()
             testloss /= len(testy)
 
-            datastore.append((avgsampleloss,testloss))
+            datastore.append((valloss,testloss))
 
         if verbose:
             print("epoch: ",epoch,"/",numepochs-1,
-              ", avg loss per sample: %.4f" %avgsampleloss, end="\r" if epoch<numepochs-1 else "\n")
-        if avgsampleloss < early_stop: 
-            break
+              ", train loss per sample: %.4f" %avgsampleloss, 
+              ", val loss per sample: %.4f" %valloss,
+              end="\r" if epoch<numepochs-1 else "\n")
+        # if avgsampleloss < early_stop: 
+        #     break
+        if prevmin is None or valloss < prevmin: 
+            patience = maxpatience
+            prevmin = valloss
+        else: patience -= 1
+        if patience <=0: break
