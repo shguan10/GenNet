@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 from translate import *
 from deep_regression import *
+from linear_regression import *
 
 def genpoint(stdnorm=np.random.normal,size=10):
     xs = stdnorm(size=size)
@@ -340,101 +341,6 @@ def exp7(numdata=1000,corrp = 0.01,x4weight=1,x1x4weight=1):
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
-BENEFIT = 0
-DIFFNORM = 1
-BIAS = 2
-NORMDIFF = 3
-DIFFDOTREAL = 4
-DIFFTHEORY = 5
-
-def linear_reg_exp(numtrain=3000,numtest=300,m1weight=(1,),m2weight=(1,),corrN=0,corrScale=1,metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False):
-    # assert corrN < len(m2weight)
-    numdata = numtrain + numtest
-    C1 = len(m1weight)
-    C2 = len(m2weight)
-    numfeat = 1+C1+C2
-    m2start = 1+C1
-    m2corrstart = m2start + C2 - corrN
-
-    xs = np.random.normal(size=(numdata,numfeat)).astype(np.float64)
-    xs[:,0] = 1
-    xs[:,m2start:]+=np.array(m2bias).reshape(1,-1)
-    xs[:,m2corrstart:] += xs[:,:corrN] * corrScale
-    
-    m2bias = np.array(m2bias).mean()
-    # realbeta = [-m2bias]+list(m1weight) + list(m2weight)
-    realbeta = [0]+list(m1weight) + list(m2weight)
-    realbeta = np.array(realbeta).reshape(-1,1).astype(np.float64)
-
-    y = xs @ realbeta
-    y += np.random.normal(size=(y.shape))
-
-    # do the first model
-    X = xs[:numtrain,:m2start]
-    Y = y[:numtrain,:]
-    Xt = np.transpose(X)
-    XtX = Xt @ X
-    XtXinv = np.linalg.inv(XtX)
-    hatbeta = XtXinv @ Xt @ Y
-
-    testX = xs[numtrain:,:m2start]
-    prederr = (testX @ hatbeta) - y[numtrain:,:]
-    uprederr = (np.transpose(prederr) @ prederr).squeeze()
-
-    # do the second model
-    X = xs[:numtrain,:]
-    Xt = np.transpose(X)
-    XtX = Xt @ X
-    XtXinv = np.linalg.inv(XtX)
-    hatbeta2 = XtXinv @ Xt @ Y
-
-    if showBeta:
-        plt.plot(hatbeta,'g',label="control hatbeta")
-        plt.plot(hatbeta2,'r',label="mm hatbeta")
-        plt.plot(realbeta,"b--",label="real beta")
-        plt.xlabels("index of (hat)beta")
-        plt.legend()
-        plt.title("hatbeta for M2 ~ N(%.1f,1)"%m2bias)
-        plt.show()
-        pdb.set_trace()
-
-    m2avg = np.ones((numtest,numfeat-m2start))*X[:numtrain,m2start:].mean(axis=0)
-    m2avg*= useM2avg
-    testX = np.concatenate((xs[numtrain:,:m2start],
-                            m2avg),axis=1)
-    prederr = (testX @ hatbeta2) - y[numtrain:,:]
-    bprederr = (np.transpose(prederr) @ prederr).squeeze()
-    if metric==BENEFIT: 
-        # M1 = xs[:numtrain,:-1]
-        # M1p= xs[numtrain:,:-1]
-        # M2 = xs[:numtrain,-1].reshape(-1,1)
-        # M2p= xs[numtrain:,-1].reshape(-1,1)
-        # M1t = M1.transpose()
-        # B = M1p @ np.linalg.inv(M1t @ M1)@ M1t @ M2
-        # v = (B**2).sum()
-        
-        # V = M1p @ np.linalg.inv(M1t @ M1)@ M1t
-        # v = (V.transpose() @ V).trace()
-
-        # H = M1 @ np.linalg.inv(M1t@M1) @ M1t
-        # v = H.trace()
-        # v = (M2p*l).sum()
-        # v = (l**2).sum()-2*(M2p*l).sum()
-        # v = ((M2p - l)**2).sum()
-        # l = (l**2).sum()
-        # r = 4 * (M2p**2).sum()
-        return uprederr - bprederr
-    elif metric==BIAS: return (hatbeta[0]-hatbeta2[0]).squeeze()
-    elif metric==DIFFNORM: return np.sum(hatbeta*hatbeta).squeeze()-np.sum(hatbeta2[:-1]*hatbeta2[:-1]).squeeze()
-    elif metric==NORMDIFF: return np.sum((hatbeta-hatbeta2[:-1])**2).squeeze()
-    elif metric==DIFFDOTREAL: return np.sum((hatbeta2[:-1]-hatbeta)*realbeta[:-1]).squeeze()
-    elif metric==DIFFTHEORY:
-        exp = uprederr - bprederr
-        M1=  xs[:numtrain,:m2start]
-        M1p = xs[numtrain:,:m2start]
-        theory = (realbeta[m2start:]**2).sum()*(C1+1)*numtest / (numtrain-C1-2)
-        return theory - exp
-
 def svm_exp(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
@@ -475,7 +381,7 @@ def svm_exp(numdata=1000,m1weight=[1],m2weight=[1],m2bias=[1]):
     bprederr = (np.transpose(prederr) @ prederr).squeeze()
     return uprederr - bprederr
 
-def main(fn,numits=1000,xlabels=["sample value"]):
+def main(fn,numits=1000,xlabels=["sample value"],plotnames=None,savedata=None):
     N = numits
     rawdata = []
     for it in range(N):
@@ -491,50 +397,46 @@ def main(fn,numits=1000,xlabels=["sample value"]):
               ", mean: ", mu,
               ", std: ", sigma,
               ", p value: ",p,end="\r",flush=True)
+    if savedata is not None:
+        with open("data/"+str(savedata)+".pk","wb") as f:
+            pk.dump(rawdata,f)
+        print("saved data to ",savedata)
+    
     print("\n")
+
     lo = mu+(t.ppf(0.05)*sigma)
     for ind,lab in enumerate(xlabels):
         # lo = mu+(t.ppf(0.025)*sigma)
         # hi = mu+(t.ppf(0.975)*sigma)
         xs = np.arange(N)
         ones = np.ones(N)
-        _=plt.hist(npdata[:,ind],bins=int(N/10))
+        _=plt.hist(npdata[:,ind],bins=max(int(N/10),1))
         plt.ylabel("num of samples")
         plt.xlabel("sample value of "+lab)
-        plt.axvline(x=lo[ind],color="r",label="95% confidence lower bound for sample mean")
+        plt.axvline(x=lo[ind],color="r",label="95%% confidence lower bound for sample mean (%f)"%lo[ind])
         plt.legend()
         plt.title("histogram of "+lab)
         # plt.plot(xs,data,'rs',xs,ones*lo,'k-',xs,np.zeros(xs.shape),'w-')
         # plt.plot(xs,data,'rs',xs,ones*lo,'g--',xs,ones*hi,'g--')
-        plt.show()
+        if plotnames is None: plt.show()
+        else: plt.savefig("figs/"+plotnames[ind]+".jpg")
+        plt.clf()
 
 if __name__ == '__main__':
-    # metric = BENEFIT
-    # if metric==BENEFIT: xlabels="mm benefit"
-    # elif metric==DIFFNORM:  xlabels="diff in norm (control - mm)"
-    # elif metric==NORMDIFF:  xlabels="norm of the diff in hatbeta of M1"
-    # elif metric==BIAS: xlabels="diff in hatbeta[0] (control - mm)"
-    # elif metric==DIFFDOTREAL: xlabels="diff in hatbeta dot product with realbeta (mm - control)"
-    # elif metric==DIFFTHEORY: xlabels="diff in mmbenefit (theory - actual)"
+    diffvar=False
+    xlabels = ["mm benefit","testloss1","difftestvar"] if diffvar else ["mm benefit","testloss1"]
 
-    xlabels = ["mm benefit","testloss1"]
-
-    numits=200
-
-    # numtrain=1000
-    # numtest=1000
-    # c1=100
-    # corrN=0
-    # c2 = 1+10
-    # corrScale = 0.0625
+    numits=100
 
     numdata=10000
 
-    lenM1=30
+    lenM1=100
     lenM2=10
     lenH = 100
     actualH = 10
     numHlayers = 4
+
+    name=str(lenM1)+"_"+str(lenM2)+"_"+str(lenH)+"_"+str(actualH)+"_"+str(numHlayers)
 
     bsize=32
     numepochs=400
@@ -550,7 +452,16 @@ if __name__ == '__main__':
         # return svm_exp(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
         # return translate_exp(numdata=1000)
         # return simple_deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,verbose=True)
-        return deep_regression_exp(numdata=numdata,maxpatience=maxpatience,lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show)
-    # genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
-    fn(True)
-    # main(fn,numits=numits,xlabels=xlabels)
+        genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
+        return deep_regression_exp(numdata=numdata,diffvar=diffvar,maxpatience=maxpatience,lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show)
+    # fn(True)
+    plotnames=[name+"benefit",name+"loss",name+"diffval"]
+    savedata=name+"trial3"
+    main(fn,numits=numits,xlabels=xlabels,plotnames=plotnames,savedata=savedata)
+
+    # for lenM1 in [80,90,30]:
+    #     name=str(lenM1)+"_"+str(lenM2)+"_"+str(lenH)+"_"+str(actualH)+"_"+str(numHlayers)
+    #     def fn(show=False):
+    #         genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
+    #         return deep_regression_exp(numdata=numdata,diffvar=diffvar,maxpatience=maxpatience,lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show)
+    #     main(fn,numits=numits,xlabels=xlabels,plotnames=[name+"benefit",name+"loss",name+"diffval"],savedata=name)

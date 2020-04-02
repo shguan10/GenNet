@@ -5,8 +5,10 @@ import random
 import time
 
 import matplotlib.pyplot as plt
+import scipy.fftpack
 
 import pickle as pk
+from measure import plot
 
 def genbetas_simple(numM1,numM2,numH=500,numY=1,seed=None,save="sdrbetas.pk",load=None,ftype=np.float64):
     # generates the real betas for the specified parameters
@@ -114,7 +116,7 @@ def genbetas_deep(lenM1,lenM2,lenH,numHlayers=1,lenY=1,seed=None,save="sdrbetas.
         with open(save,"wb") as f: pk.dump(params,f)
     return params
 
-def deep_regression_exp(numdata=1000,maxpatience = 20,lenM1=200,lenM2=1,lenH=500,numHlayers=1,verbose=False,bsize=32,numepochs=200,show=False):
+def deep_regression_exp(numdata=1000,diffvar=False,maxpatience = 20,lenM1=200,lenM2=1,lenH=500,numHlayers=1,verbose=False,bsize=32,numepochs=200,show=False):
     numtrain = int(0.9*numdata)
     numtest = numdata - numtrain
     numval = numtest
@@ -160,7 +162,7 @@ def deep_regression_exp(numdata=1000,maxpatience = 20,lenM1=200,lenM2=1,lenH=500
     model = Deep_Regression(lenM1,lenM2,lenH,numHlayers=numHlayers).cuda()
     optimizer = torch.optim.SGD(model.parameters(), momentum=0.9, nesterov=True,
                                 lr=0.001)
-    traindata = [] if show else None
+    traindata = [] if (show or diffvar) else None
     train_dr(model,optimizer,trainm1,m2zeros_train,trainy,
                 maxpatience=maxpatience,
                 numval=numval,testset=(testm1,m2zeros_test,testy),
@@ -178,7 +180,7 @@ def deep_regression_exp(numdata=1000,maxpatience = 20,lenM1=200,lenM2=1,lenH=500
     model = Deep_Regression(lenM1,lenM2,lenH,numHlayers=numHlayers).cuda()
     optimizer = torch.optim.SGD(model.parameters(), momentum=0.9, nesterov=True,
                                 lr=0.001)
-    traindata2 = [] if show else None
+    traindata2 = [] if (show or diffvar) else None
     train_dr(model,optimizer,trainm1,trainm2,trainy,
                 maxpatience=maxpatience,
                 numval=numval,testset=(testm1,m2zeros_test,testy),
@@ -189,14 +191,19 @@ def deep_regression_exp(numdata=1000,maxpatience = 20,lenM1=200,lenM2=1,lenH=500
         testloss = ((testps - testy)**2).sum().cpu().numpy()
 
     testloss2 = testloss / numtest
+    
+    traindata = np.array(traindata)
+    traindata2 = np.array(traindata2)
+    
+    if diffvar: difftestvar = traindata[:,1].var()-traindata2[:,1].var()
+
     if verbose:
         print("testloss2",testloss2)
         print("benefit",testloss1-testloss2)
+        if diffvar: print("difftestvar",difftestvar)
 
     if show:
         # plot the training curves
-        traindata = np.array(traindata)
-        traindata2 = np.array(traindata2)
 
         fig, ax1 = plt.subplots()
 
@@ -217,6 +224,71 @@ def deep_regression_exp(numdata=1000,maxpatience = 20,lenM1=200,lenM2=1,lenH=500
         plt.legend((controltrain,bitrain,controltest,bitest),('control val','bimodal val','control testing','bimodal testing'))
         # plt.savefig("figs/"+str(random.random())[2:]+".jpg")
         plt.show()
+        plt.clf()
+
+        # plot the fourier transform
+        plt.ylabel('amplitude')
+        plt.xlabel('frequency (1/epoch)')
+        
+        N = len(traindata[:,1])
+        yfuni = scipy.fftpack.fft(traindata[:,1])
+        xf = np.linspace(0,1/2,N/2)
+        yfuni = 2/N*np.abs(yfuni[:len(xf)])
+        plt.plot(xf,yfuni,color='orange',label="control testing")
+
+        N = len(traindata2[:,1])
+        yfbi = scipy.fftpack.fft(traindata2[:,1])
+        xf = np.linspace(0,1/2,N/2)
+        yfbi = 2/N*np.abs(yfbi[:len(xf)])
+        plt.plot(xf,yfbi,color="cyan",label="bimodal testing")
+        plt.legend()
+        plt.show()
+        pdb.set_trace()
 
 
-    return [testloss1-testloss2,testloss1]
+    return [testloss1-testloss2,testloss1] if not diffvar else [testloss1-testloss2,testloss1,difftestvar] 
+
+
+if __name__ == '__main__':
+    diffvar=False
+    xlabels = ["mm benefit","testloss1","difftestvar"] if diffvar else ["mm benefit","testloss1"]
+
+    numits=100
+
+    numdata=10000
+
+    lenM1=100
+    lenM2=10
+    lenH = 100
+    actualH = 10
+    numHlayers = 4
+
+    name=str(lenM1)+"_"+str(lenM2)+"_"+str(lenH)+"_"+str(actualH)+"_"+str(numHlayers)
+
+    bsize=32
+    numepochs=400
+    maxpatience = 20
+
+    show = False
+    def fn(show=show):
+        # return exp3(numdata=10000,corrp = 0.1,cutoffp = 0.5,x4weight=1)
+        # return exp4(numdata=10000,m2weight=(1,0.01,1,0))
+        # return exp5(numdata=10000,m2weight=(1,0.01,1,0))
+        # return exp7(x4weight=1,x1x4weight=0)
+        # return linear_reg_exp(numtrain=numtrain,numtest=numtest,m1weight=[1]*c1,m2weight=[1]*c2,corrN=corrN,corrScale=corrScale,m2bias=[0],useM2avg=True,showBeta=False,metric=metric)
+        # return svm_exp(numdata=1000,m1weight=[1]*200,m2weight=[30],m2bias=[1])
+        # return translate_exp(numdata=1000)
+        # return simple_deep_regression_exp(lenM1=lenM1,lenM2=lenM2,lenH=lenH,verbose=True)
+        genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
+        return deep_regression_exp(numdata=numdata,diffvar=diffvar,maxpatience=maxpatience,lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show)
+    # fn(True)
+    plotnames=[name+"benefit",name+"loss",name+"diffval"]
+    savedata=name+"trial3"
+    plot(fn,numits=numits,xlabels=xlabels,plotnames=plotnames,savedata=savedata)
+
+    # for lenM1 in [80,90,30]:
+    #     name=str(lenM1)+"_"+str(lenM2)+"_"+str(lenH)+"_"+str(actualH)+"_"+str(numHlayers)
+    #     def fn(show=False):
+    #         genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
+    #         return deep_regression_exp(numdata=numdata,diffvar=diffvar,maxpatience=maxpatience,lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show)
+    #     main(fn,numits=numits,xlabels=xlabels,plotnames=[name+"benefit",name+"loss",name+"diffval"],savedata=name)
