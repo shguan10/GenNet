@@ -132,46 +132,50 @@ def linear_reg_exp(numtrain=3000,numtest=300,m1weight=(1,),m2weight=(1,),metric=
     theory = (realbeta[m2start:]**2).sum()*(C1+1)*numtest / (numtrain-C1-2)
     return theory - exp
 
-def getdata_plot(fn,numits=1000,xlabels=["sample value"],plotnames=None,savedata=None,show=True):
-    N = numits
-    rawdata = []
-    for it in range(N):
-        res = fn()
-        rawdata += [res]
-        npdata = np.array(rawdata)
-        mu = npdata.mean(axis=0)
-        sigma = npdata.std(ddof=1,axis=0) if it>0 else 0
-        sigma /= np.sqrt(it+1)
-        t = sp.stats.t(it)
-        p = t.cdf(-mu/sigma) if it>0 else 1
-        print("it: ",it,"/",N-1,
-              ", mean: ", mu,
-              ", std: ", sigma,
-              ", p value: ",p,end="\r",flush=True)
-    if savedata is not None:
-        with open("data/"+str(savedata)+".pk","wb") as f:
-            pk.dump(rawdata,f)
-        print("saved data to ",savedata)
-    
-    print("\n")
+def getdata(fn,numits=1000,savedata=None):
+  N = numits
+  rawdata = []
+  for it in range(N):
+      res = fn()
+      rawdata += [res]
+      npdata = np.array(rawdata)
+      mu = npdata.mean(axis=0)
+      sigma = npdata.std(ddof=1,axis=0) if it>0 else 0
+      sigma /= np.sqrt(it+1)
+      t = sp.stats.t(it)
+      p = t.cdf(-mu/sigma) if it>0 else 1
+      print("it: ",it,"/",N-1,
+            ", mean: ", mu,
+            ", std: ", sigma,
+            ", p value: ",p,end="\r",flush=True)
+  if savedata is not None:
+      with open("data/"+str(savedata)+".pk","wb") as f:
+          pk.dump(rawdata,f)
+      print("\nsaved data to ",savedata)
+  
+  print("\n")
+  return npdata
 
-    lo = mu+(t.ppf(0.05)*sigma)
-    for ind,lab in enumerate(xlabels):
-        # lo = mu+(t.ppf(0.025)*sigma)
-        # hi = mu+(t.ppf(0.975)*sigma)
-        xs = np.arange(N)
-        ones = np.ones(N)
-        _=plt.hist(npdata[:,ind],bins=max(int(N/10),1))
-        plt.ylabel("num of samples")
-        plt.xlabel("sample value of "+lab)
-        plt.axvline(x=lo[ind],color="r",label="95%% confidence lower bound for sample mean (%f)"%lo[ind])
-        plt.legend()
-        plt.title("histogram of "+lab)
-        # plt.plot(xs,data,'rs',xs,ones*lo,'k-',xs,np.zeros(xs.shape),'w-')
-        # plt.plot(xs,data,'rs',xs,ones*lo,'g--',xs,ones*hi,'g--')
-        if show: plt.show()
-        else: plt.savefig("figs/"+plotnames[ind]+".jpg")
-        plt.clf()
+def plot(npdata,xlabels=["sample value"],plotnames=None,savedata=None,show=True):
+  N = len(npdata)
+  mu = npdata.mean(axis=0)
+  sigma = npdata.std(ddof=1,axis=0)
+  sigma /= np.sqrt(npdata.shape[0])
+  
+  t = sp.stats.t(N)
+  lo = mu+(t.ppf(0.05)*sigma)
+  for ind,lab in enumerate(xlabels):
+      xs = np.arange(N)
+      ones = np.ones(N)
+      _=plt.hist(npdata[:,ind],bins=max(int(N/10),1))
+      plt.ylabel("num of samples")
+      plt.xlabel("sample value of "+lab)
+      plt.axvline(x=lo[ind],color="r",label="95%% confidence lower bound for sample mean (%f)"%lo[ind])
+      plt.legend()
+      plt.title("histogram of "+lab)
+      if show: plt.show()
+      else: plt.savefig("figs/"+plotnames[ind]+".jpg")
+      plt.clf()
 
 if __name__ == '__main__':
   metric = BENEFIT
@@ -185,24 +189,35 @@ if __name__ == '__main__':
   # diffvar=False
   # xlabels = ["mm benefit","testloss1","difftestvar"] if diffvar else ["mm benefit","testloss1"]
 
-  numits=100
+  data = []
 
-  numtrain=1000
-  numtest=1000
-  c1 = 100
-  c2 = 10
-  translate = True
+  for c1 in [20,40,60,80,100]:
+    # for c2 in [0,1,2,4,8,16,32,64,128]:
+    for c2 in [20,40,60,80,100]:
 
-  corrN=[c1,4]
-  frobNorm=1
+      for frobNorm in np.linspace(0,2,num=10,endpoint=False):
 
-  show = False
-  def fn(show=show):
-    return [linear_reg_exp(numtrain=numtrain,numtest=numtest,m1weight=[1]*c1,m2weight=[1]*c2,m2bias=[0],useM2avg=True,showBeta=False,metric=metric,translate=translate,corrN=corrN,frobNorm=frobNorm)]
-  # fn(True)
-  name = str(c1)+"_"+str(c2)+"_"+str(numtrain)+"_"+"trans"+str(translate)
-  # plotnames=[name+"benefit",name+"loss",name+"diffval"]
-  plotnames=[name+"benefit"]
-  savedata=name
-  show=True
-  getdata_plot(fn,numits=numits,xlabels=xlabels,plotnames=plotnames,savedata=savedata,show=show)
+        numits=1000
+        numtrain=1000
+        numtest=1000
+        # c2 = 128
+        translate = False
+
+        corr2 = c2
+        # corrN=[c1,corr2]
+        corrN=[c1,c2]
+
+        show = False
+        def fn(show=show):
+          return [linear_reg_exp(numtrain=numtrain,numtest=numtest,m1weight=[1]*c1,m2weight=[1]*c2,m2bias=[0],useM2avg=True,showBeta=False,metric=metric,translate=translate,corrN=corrN,frobNorm=frobNorm)]
+        # fn(True)
+        name = str(c1)+"_"+str(c2)+"_"+str(numtrain)+"_"+"trans"+str(translate)+"corrN"+str(corrN)
+        # plotnames=[name+"benefit",name+"loss",name+"diffval"]
+        plotnames=[name+"benefit"]
+        savedata=name
+        show=True
+
+        data.append((str(c1)+"_"+str(corr2),getdata(fn,numits=numits,savedata=savedata)))
+    
+  with open("data/linearcorr_allcorr.pk","wb") as f:
+    pk.dump(data,f)

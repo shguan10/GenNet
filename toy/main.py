@@ -422,6 +422,10 @@ def main(fn,numits=1000,xlabels=["sample value"],plotnames=None,savedata=None):
         else: plt.savefig("figs/"+plotnames[ind]+".jpg")
         plt.clf()
 
+def stringify(d):
+    return "_".join([k+str(d[k])  for k in d])
+
+
 if __name__ == '__main__':
     diffvar=False
     xlabels = ["mm benefit","testloss1","difftestvar"] if diffvar else ["mm benefit","testloss1"]

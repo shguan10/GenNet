@@ -141,7 +141,7 @@ class Deep_Regression(torch.nn.Module):
             if ind<len(self.paramsH)-1: h = torch.relu(h)
         return h
 
-def train_dr(model,optimizer,trainm1,trainm2,labels,maxpatience = 20,numval=0,testset=None,bsize=10,verbose=False,early_stop=0.001,numepochs=200,datastore=None):
+def train_dr(model,optimizer,trainm1,trainm2,labels,maxpatience = 20,numval=0,testset=None,bsize=10,verbose=False,early_stop=0.001,numepochs=200,datastore=None,translate=None):
     numtrain = trainm1.shape[0]
     numtrain -= numval
     numbatches = int(numtrain / bsize)
@@ -151,9 +151,7 @@ def train_dr(model,optimizer,trainm1,trainm2,labels,maxpatience = 20,numval=0,te
     for epoch in range(numepochs):
         epochloss = 0
         idxs = (np.random.rand(numbatches,bsize)*numtrain).astype(np.int64)
-        # idxs = np.arange(numtrain)
-        # np.random.shuffle(idxs)
-        # for start in range(numbatches):
+
         for batch in idxs:
             optimizer.zero_grad()
             m1 = trainm1[batch]
@@ -164,19 +162,15 @@ def train_dr(model,optimizer,trainm1,trainm2,labels,maxpatience = 20,numval=0,te
             py = model.forward(m1,m2)
             loss = ((py - by)**2).sum() / bsize / 2
             epochloss+=loss
-            # if start==0:
-                # print("\npy",py)
-                # pdb.set_trace()
-                # print("by",by)self.paramsH
+
             loss.backward()
-            # print(epoch,start)
-            # print(model.betah_ky.weight)
-            # if epoch==0 and start==43: pdb.set_trace()
-            # if (model.beta2.weight.grad!=model.beta2.weight.grad).any(): pdb.set_trace()
             optimizer.step()
         avgsampleloss = (epochloss/numbatches/bsize)
         with torch.no_grad():
-            zeros = torch.zeros(trainm2[numtrain:].shape).double().cuda()
+            if translate is not None:
+                zeros = trainm1[numtrain:] @ translate
+            else:
+                zeros = torch.zeros(trainm2[numtrain:].shape).double().cuda()
             valps = model.forward(trainm1[numtrain:],zeros)
             valloss = ((valps - labels[numtrain:])**2).sum().cpu().numpy()
             valloss /= numval
@@ -193,11 +187,11 @@ def train_dr(model,optimizer,trainm1,trainm2,labels,maxpatience = 20,numval=0,te
             print("epoch: ",epoch,"/",numepochs-1,
               ", train loss per sample: %.4f" %avgsampleloss, 
               ", val loss per sample: %.4f" %valloss,
-              end="\r" if epoch<numepochs-1 else "\n")
-        # if avgsampleloss < early_stop: 
-        #     break
+              end="\r")
+        
         if prevmin is None or valloss < prevmin: 
             patience = maxpatience
             prevmin = valloss
         else: patience -= 1
         if patience <=0: break
+    # if verbose: print("\n")
