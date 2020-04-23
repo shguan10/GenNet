@@ -165,5 +165,24 @@ def read():
   plt.savefig("figs/linear_std_norm4"+".jpg")
   plt.clf()
 
+def go():
+  frobNorm = "2.0"
+  translate = True
+  fname ="data/frobInc_100_10_100_10_4_"+frobNorm+"_"+str(translate)+".pk"
+  with open(fname,"rb") as f:
+    data = pk.load(f)
+    data = np.array(data)
+  # pdb.set_trace()
+  # plt.scatter(0,1,alpha=0.3)
+  mu = data[:,0].mean()
+  sigma = data[:,0].std()
+  plt.scatter(data[:,0],np.zeros(data[:,0].shape),alpha=0.3,label="the benefit measured from one trial\nmu="+str(mu)+", s="+str(sigma))
+  plt.xlabel("value of benefit")
+  plt.legend()
+  plt.title("scatterplot of frobNorm "+frobNorm+(", no trans" if not translate else ""))
+
+  plt.show()
+
 if __name__ == '__main__':
-  read()
+  # read()
+  go()

@@ -7,6 +7,8 @@ import pdb
 import pickle as pk
 import matplotlib.pyplot as plt
 
+from utils import *
+
 BENEFIT = 0
 DIFFNORM = 1
 BIAS = 2
@@ -14,14 +16,12 @@ NORMDIFF = 3
 DIFFDOTREAL = 4
 DIFFTHEORY = 5
 
-def linear_reg_exp(numtrain=3000,numtest=300,m1weight=(1,),m2weight=(1,),metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False,translate=False,corrN=[0,0],frobNorm=1):
+def linear_reg_exp(numtrain=3000,numtest=300,m1weight=(1,),m2weight=(1,),metric=BENEFIT,m2bias=[0],useM2avg=True,showBeta=False,translate=False,corrN=[0,0],frobNorm=1,partialTranslate=False):
   """
   The correlation model we are using is a very simple one. Specify the tuple (how many from m1, how many from m2) will be correlated. This will specify the dimensions of the translation matrix from m1 and m2. 
 
   frobNorm will be the parameter specifying the Frobenius norm of the 'cross correlation matrix' between m1 and m2, which we'll define as E[m1 m2^T] - E[m1]E[m2^T] = E[m1 m2^T]. This is the same as the Frobenius norm of the translation matrix, which is
-  Z where m_2 = Z @ m_1 + epsilon. Now, this is different from the actual cross correlation between m1 and m2, which is defined as 
-
-  How do we ensure that the Frobenius norm is frobNorm? We choose a set of n = min(corrN) numbers, together whose l2 norm is frobNorm, in the following way. We first sample from a unit ball of the same dimension, and then scale it to frobNorm. Having selected the singular values, we then choose the eigenvectors, simply by sampling n independent vectors uniformly.
+  Z where m_2 = Z @ m_1 + epsilon.
   """
 
   numdata = numtrain + numtest
@@ -68,9 +68,12 @@ def linear_reg_exp(numtrain=3000,numtest=300,m1weight=(1,),m2weight=(1,),metric=
   X = xs[:numtrain,:]
   Y = y[:numtrain,:]
   if translate:
-    # first, translate m1 into m2
-    M1 = X[:,:m2start]
-    M2 = X[:,m2start:]
+    if not partialTranslate:
+      M1 = X[:,:m2start]
+      M2 = X[:,m2start:]
+    else:
+      M1 = realm1[:,:corrN[0]]
+      M2 = realm2[:,:corrN[1]]
 
     M1t = np.transpose(M1)
     M1tM1 = M1t @ M1
@@ -94,7 +97,11 @@ def linear_reg_exp(numtrain=3000,numtest=300,m1weight=(1,),m2weight=(1,),metric=
 
   m1test = xs[numtrain:,:m2start]
   if translate:
-    m2test = m1test @ hatbetatrans
+    if not partialTranslate:
+      m2test = m1test @ hatbetatrans
+    else:
+      m2test = np.ones((numtest,numfeat-m2start))*X[:numtrain,m2start:].mean(axis=0)
+      m2test[:,:corrN[1]] = m1test[:,:corrN[0]] @ hatbetatrans
   else:
     m2test = np.ones((numtest,numfeat-m2start))*X[:numtrain,m2start:].mean(axis=0)
     m2test*= useM2avg
@@ -132,51 +139,6 @@ def linear_reg_exp(numtrain=3000,numtest=300,m1weight=(1,),m2weight=(1,),metric=
     theory = (realbeta[m2start:]**2).sum()*(C1+1)*numtest / (numtrain-C1-2)
     return theory - exp
 
-def getdata(fn,numits=1000,savedata=None):
-  N = numits
-  rawdata = []
-  for it in range(N):
-      res = fn()
-      rawdata += [res]
-      npdata = np.array(rawdata)
-      mu = npdata.mean(axis=0)
-      sigma = npdata.std(ddof=1,axis=0) if it>0 else 0
-      sigma /= np.sqrt(it+1)
-      t = sp.stats.t(it)
-      p = t.cdf(-mu/sigma) if it>0 else 1
-      print("it: ",it,"/",N-1,
-            ", mean: ", mu,
-            ", std: ", sigma,
-            ", p value: ",p,end="\r",flush=True)
-  if savedata is not None:
-      with open("data/"+str(savedata)+".pk","wb") as f:
-          pk.dump(rawdata,f)
-      print("\nsaved data to ",savedata)
-  
-  print("\n")
-  return npdata
-
-def plot(npdata,xlabels=["sample value"],plotnames=None,savedata=None,show=True):
-  N = len(npdata)
-  mu = npdata.mean(axis=0)
-  sigma = npdata.std(ddof=1,axis=0)
-  sigma /= np.sqrt(npdata.shape[0])
-  
-  t = sp.stats.t(N)
-  lo = mu+(t.ppf(0.05)*sigma)
-  for ind,lab in enumerate(xlabels):
-      xs = np.arange(N)
-      ones = np.ones(N)
-      _=plt.hist(npdata[:,ind],bins=max(int(N/10),1))
-      plt.ylabel("num of samples")
-      plt.xlabel("sample value of "+lab)
-      plt.axvline(x=lo[ind],color="r",label="95%% confidence lower bound for sample mean (%f)"%lo[ind])
-      plt.legend()
-      plt.title("histogram of "+lab)
-      if show: plt.show()
-      else: plt.savefig("figs/"+plotnames[ind]+".jpg")
-      plt.clf()
-
 if __name__ == '__main__':
   metric = BENEFIT
   if metric==BENEFIT: xlabels=["mm benefit"]
@@ -191,33 +153,36 @@ if __name__ == '__main__':
 
   data = []
 
-  for c1 in [20,40,60,80,100]:
-    # for c2 in [0,1,2,4,8,16,32,64,128]:
-    for c2 in [20,40,60,80,100]:
+  for r1 in [20,40,60,80,100]:
+    for r2 in [0,1,2,4,8,16,32,64,128]:
+    # for c2 in [20,40,60,80,100]:
 
       for frobNorm in np.linspace(0,2,num=10,endpoint=False):
 
         numits=1000
         numtrain=1000
         numtest=1000
-        # c2 = 128
-        translate = False
+        c1 = 100
+        c2 = 128
+        translate = True
+        partialTranslate=True
 
-        corr2 = c2
+        # corr2 = c2
         # corrN=[c1,corr2]
-        corrN=[c1,c2]
+        corrN=[r1,r2]
 
         show = False
         def fn(show=show):
-          return [linear_reg_exp(numtrain=numtrain,numtest=numtest,m1weight=[1]*c1,m2weight=[1]*c2,m2bias=[0],useM2avg=True,showBeta=False,metric=metric,translate=translate,corrN=corrN,frobNorm=frobNorm)]
+          return [linear_reg_exp(numtrain=numtrain,numtest=numtest,m1weight=[1]*c1,m2weight=[1]*c2,m2bias=[0],useM2avg=True,showBeta=False,metric=metric,translate=translate,corrN=corrN,frobNorm=frobNorm,partialTranslate=partialTranslate)]
         # fn(True)
-        name = str(c1)+"_"+str(c2)+"_"+str(numtrain)+"_"+"trans"+str(translate)+"corrN"+str(corrN)
+        name = str(r1)+"_"+str(r2)+"_"+str(frobNorm)+"_"+"partial"
         # plotnames=[name+"benefit",name+"loss",name+"diffval"]
         plotnames=[name+"benefit"]
         savedata=name
         show=True
 
-        data.append((str(c1)+"_"+str(corr2),getdata(fn,numits=numits,savedata=savedata)))
+        print(name)
+        data.append((name,getdata(fn,numits=numits,savedata=savedata)))
     
-  with open("data/linearcorr_allcorr.pk","wb") as f:
+  with open("data/linearcorr_allcorr_partial.pk","wb") as f:
     pk.dump(data,f)

@@ -9,6 +9,7 @@ import scipy.fftpack
 
 import pickle as pk
 from measure import plot
+from utils import *
 
 def genbetas_simple(numM1,numM2,numH=500,numY=1,seed=None,save="sdrbetas.pk",load=None,ftype=np.float64):
   # generates the real betas for the specified parameters
@@ -116,7 +117,7 @@ def genbetas_deep(lenM1,lenM2,lenH,numHlayers=1,lenY=1,seed=None,save="sdrbetas.
     with open(save,"wb") as f: pk.dump(params,f)
   return params
 
-def deep_regression_exp(numdata=1000,diffvar=False,maxpatience = 20,lenM1=200,lenM2=1,lenH=500,numHlayers=1,verbose=False,bsize=32,numepochs=200,show=False,translate=False,corrN=[0,0],frobNorm=1):
+def deep_regression_exp(numdata=1000,diffvar=False,maxpatience = 20,lenM1=200,lenM2=1,lenH=500,numHlayers=1,verbose=False,bsize=32,numepochs=200,show=False,translate=False,corrN=[0,0],frobNorm=1,partialTranslate=False):
   numtrain = int(0.9*numdata)
   numtest = numdata - numtrain
   numval = numtest
@@ -193,8 +194,16 @@ def deep_regression_exp(numdata=1000,diffvar=False,maxpatience = 20,lenM1=200,le
   traindata2 = [] if (show or diffvar) else None
   if translate:
     with torch.no_grad():
+      if not partialTranslate:
+        term1 = trainm1
+        term2 = trainm2
+      else:
+        term1 = trainm1[:,:corrN[0]]
+        term2 = trainm2[:,:corrN[1]]
+     
       hatbetatrans = \
-        (trainm1.t() @ trainm1).inverse() @ trainm1.t() @ trainm2
+        (term1.t() @ term1).inverse() @ term1.t() @ term2
+  else: hatbetatrans = None
   train_dr(model,optimizer,trainm1,trainm2,trainy,
         maxpatience=maxpatience,
         numval=numval,testset=(testm1,m2zeros_test,testy),
@@ -202,7 +211,11 @@ def deep_regression_exp(numdata=1000,diffvar=False,maxpatience = 20,lenM1=200,le
 
   model.eval()
   with torch.no_grad(): 
-    if translate: m2zeros_test = testm1 @ hatbetatrans
+    m2zeros_test = torch.ones((testm1.shape[0],trainm2.shape[1])).double().cuda()*trainm2.mean(axis=0)
+    
+    if translate: 
+      m2zeros_test[:,:hatbetatrans.shape[1]] = testm1[:,:hatbetatrans.shape[0]] @ hatbetatrans
+
     testps = model.forward(testm1,m2zeros_test)
     testloss = ((testps - testy)**2).sum().cpu().numpy()
 
@@ -264,61 +277,15 @@ def deep_regression_exp(numdata=1000,diffvar=False,maxpatience = 20,lenM1=200,le
 
   return [testloss1-testloss2,testloss1] if not diffvar else [testloss1-testloss2,testloss1,difftestvar] 
 
-
-def getdata(fn,numits=1000,savedata=None):
-    N = numits
-    rawdata = []
-    for it in range(N):
-        res = fn()
-        rawdata += [res]
-        npdata = np.array(rawdata)
-        mu = npdata.mean(axis=0)
-        sigma = npdata.std(ddof=1,axis=0) if it>0 else 0
-        sigma /= np.sqrt(it+1)
-        t = sp.stats.t(it)
-        p = t.cdf(-mu/sigma) if it>0 else 1
-        print("it: ",it,"/",N-1,
-              ", mean: ", mu,
-              ", std: ", sigma,
-              ", p value: ",p,end="\r",flush=True)
-    if savedata is not None:
-        with open("data/"+str(savedata)+".pk","wb") as f:
-            pk.dump(rawdata,f)
-        print("\nsaved data to ",savedata)
-    
-    print("\n")
-    return npdata
-
-def plot(npdata,xlabels=["sample value"],plotnames=None,savedata=None,show=True):
-  N = len(npdata)
-  mu = npdata.mean(axis=0)
-  sigma = npdata.std(ddof=1,axis=0)
-  sigma /= np.sqrt(npdata.shape[0])
-  
-  t = sp.stats.t(N)
-  lo = mu+(t.ppf(0.05)*sigma)
-  for ind,lab in enumerate(xlabels):
-      xs = np.arange(N)
-      ones = np.ones(N)
-      _=plt.hist(npdata[:,ind],bins=max(int(N/10),1))
-      plt.ylabel("num of samples")
-      plt.xlabel("sample value of "+lab)
-      plt.axvline(x=lo[ind],color="r",label="95%% confidence lower bound for sample mean (%f)"%lo[ind])
-      plt.legend()
-      plt.title("histogram of "+lab)
-      if show: plt.show()
-      else: plt.savefig("figs/"+plotnames[ind]+".jpg")
-      plt.clf()
-
 if __name__ == '__main__':
   xlabels = ["mm benefit","testloss1"]
 
-  numits=20
+  numits=100
   numdata=10000
   translate=True
 
-  for frobNorm in np.linspace(8,12,num=10,endpoint=False):
-    # if frobNorm<=8: continue
+  for frobNorm in np.linspace(0,4,num=10,endpoint=False):
+    # if frobNorm<=1: continue
     print("#######\nfrobNorm "+str(frobNorm))
     lenM1=100
     lenM2=10
