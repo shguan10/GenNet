@@ -6,11 +6,6 @@ import pdb
 import matplotlib
 import matplotlib.pyplot as plt
 
-c1sweep = [20,40,60,80,100]
-c2sweep = [0,1,2,4,8,16,32,64,128]
-
-frobNormSweep = np.linspace(0,2,num=10,endpoint=False)
-
 def heatmap(data, row_labels, col_labels, ax=None,
             cbar_kw={}, cbarlabel="", **kwargs):
     """
@@ -131,39 +126,66 @@ def annotate_heatmap(im, data=None, valfmt="{x:.2f}",
     return texts
 
 def read():
-  with open("data/linearcorr_norm4.pk","rb") as f:
+  with open("data/linearcorr_allcorr_partial.pk","rb") as f:
     data = pk.load(f)
+  c1sweep = [20,40,60,80,100]
+  c2sweep = [0,1,2,4,8,16,32,64,128]
+
+  frobNormSweep = np.linspace(0,2,num=10,endpoint=False)
+  numits=1000
   # pdb.set_trace()
+  
   names,data = zip(*data)
-  names = np.array(names).reshape((len(c1sweep),len(c2sweep)))
-  data = np.array(data).reshape((len(c1sweep),len(c2sweep),1000))
-  mus = data.mean(axis=2)
-  stds = data.std(axis=2)
+  names = np.array(names).reshape((len(c1sweep),len(c2sweep),len(frobNormSweep)))
+  data = np.array(data).reshape((len(c1sweep),len(c2sweep),len(frobNormSweep),numits))
+  mus = data.mean(axis=3)
+  stds = data.std(axis=3)
 
   vmin = mus.min()
   vmax = mus.max()
 
   # graph the c1 c2 grid
-  c1s = ["c1_"+str(s) for s in c1sweep]
-  c2s = ["c2_"+str(s) for s in c2sweep]
+  c1s = ["r1_"+str(s) for s in c1sweep]
+  c2s = ["r2_"+str(s) for s in c2sweep]
 
-  tograph = stds[:,:]
+  for ind,frobNorm in enumerate(frobNormSweep):
+    # plot the mus
+    tograph = mus[:,:,ind]
 
-  fig, ax = plt.subplots()
-  im, _ = heatmap(tograph, c1s, c2s,
-                  cmap="PuOr", vmin=vmin, vmax=vmax,
-                  cbarlabel="Std of Benefit")
+    fig, ax = plt.subplots()
+    im, _ = heatmap(tograph, c1s, c2s,
+                    cmap="PuOr", vmin=vmin, vmax=vmax,
+                    cbarlabel="Mean of Benefit")
 
-  def func(x, pos):
-      return "{:.2f}".format(x).replace("0.", ".").replace("1.00", "")
+    def func(x, pos):
+        return "{:.2f}".format(x).replace("0.", ".").replace("1.00", "")
 
-  annotate_heatmap(im, valfmt=matplotlib.ticker.FuncFormatter(func), size=7)
+    annotate_heatmap(im, valfmt=matplotlib.ticker.FuncFormatter(func), size=7)
 
-  ax.set_title("Std of Benefit out of 1000 trials, frobNorm 4")
-  fig.tight_layout()
-  # plt.show()
-  plt.savefig("figs/linear_std_norm4"+".jpg")
-  plt.clf()
+    ax.set_title("Mean of Benefit out of 1000 trials, frobNorm "+str(frobNorm))
+    fig.tight_layout()
+    # plt.show()
+    plt.savefig("figs/partial_linear_mean_norm"+str(frobNorm)+".jpg")
+    plt.clf()    
+
+    # plot the stds
+    tograph = stds[:,:,ind]
+
+    fig, ax = plt.subplots()
+    im, _ = heatmap(tograph, c1s, c2s,
+                    cmap="PuOr", vmin=vmin, vmax=vmax,
+                    cbarlabel="Std of Benefit")
+
+    def func(x, pos):
+        return "{:.2f}".format(x).replace("0.", ".").replace("1.00", "")
+
+    annotate_heatmap(im, valfmt=matplotlib.ticker.FuncFormatter(func), size=7)
+
+    ax.set_title("Std of Benefit out of 1000 trials, frobNorm "+str(frobNorm))
+    fig.tight_layout()
+    # plt.show()
+    plt.savefig("figs/partial_linear_std_norm"+str(frobNorm)+".jpg")
+    plt.clf()
 
 def go():
   frobNorm = "2.0"
@@ -183,6 +205,93 @@ def go():
 
   plt.show()
 
+def go2():
+  mus = np.zeros((8,3))
+  sigmas = np.zeros((8,3))
+
+  for r2 in range(8):
+    for frobInc in range(3):
+      frobNorm = [0,0.4,0.8][frobInc]
+      lenM1=100
+      lenM2=10
+      lenH = 100
+      actualH = 10
+      numHlayers = 1
+      translate=True
+      partialTranslate=True
+  
+
+      corrN=[lenM1,r2]
+      name="frobInc_partial_"+str(lenM1)+"_"+str(lenM2)+"_"+str(lenH)+"_"+str(actualH)+"_"+str(numHlayers)+"_"+str(frobNorm)+"_"+str(translate)+"_"+str(corrN)
+
+      print(name)
+      with open("data/"+name+".pk","rb") as f:
+        d = pk.load(f)
+        d = np.array(d)
+      numtrials = d.shape[0]
+      r = d[:,0]/d[:,1]
+
+      mu = r.mean()
+      sigma = r.std()
+      mus[r2,frobInc]=mu
+      sigmas[r2,frobInc]=sigma
+
+      plt.scatter(r,np.zeros(r.shape),alpha=0.3,label="the benefit measured from one trial\nmu="+str(mu)+", s="+str(sigma))
+      plt.xlabel("value of benefit")
+      plt.legend()
+      plt.title("scatterplot of "+name)
+
+      # plt.show()
+  plt.clf()
+
+  # plot the mus
+  tograph = mus
+
+  r2sweep = list(range(8))
+  frobSweep = [0,0.4,0.8]
+
+  vmin = mus.min()
+  vmax = mus.max()
+
+  r2s = ["r2 "+str(r) for r in r2sweep]
+  frobs = ["frobNorm "+str(r) for r in frobSweep]
+
+  fig, ax = plt.subplots()
+  im, _ = heatmap(tograph, r2s, frobs,
+                  cmap="PuOr", vmin=vmin, vmax=vmax,
+                  cbarlabel="Mean of (benefit/control)")
+
+  def func(x, pos):
+      return "{:.2f}".format(x).replace("0.", ".").replace("1.00", "")
+
+  annotate_heatmap(im, valfmt=matplotlib.ticker.FuncFormatter(func), size=7)
+
+  ax.set_title("Mean of (benefit/control) out of "+str(numtrials)+" trials")
+  fig.tight_layout()
+  plt.show()
+  plt.savefig("figs/partial_deep_mean_ratio"+".jpg")
+  plt.clf()    
+
+  # plot the stds
+  tograph = sigmas
+
+  fig, ax = plt.subplots()
+  im, _ = heatmap(tograph, r2s, frobs,
+                  cmap="PuOr", vmin=vmin, vmax=vmax,
+                  cbarlabel="Std of (benefit/ratio)")
+
+  def func(x, pos):
+      return "{:.2f}".format(x).replace("0.", ".").replace("1.00", "")
+
+  annotate_heatmap(im, valfmt=matplotlib.ticker.FuncFormatter(func), size=7)
+
+  ax.set_title("Std of (benefit/control) out of "+str(numtrials)+" trials")
+  fig.tight_layout()
+  plt.show()
+  plt.savefig("figs/partial_deep_std_ratio"+".jpg")
+  plt.clf()
+
 if __name__ == '__main__':
   # read()
-  go()
+  # go()
+  go2()

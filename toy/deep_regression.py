@@ -117,7 +117,13 @@ def genbetas_deep(lenM1,lenM2,lenH,numHlayers=1,lenY=1,seed=None,save="sdrbetas.
     with open(save,"wb") as f: pk.dump(params,f)
   return params
 
-def deep_regression_exp(numdata=1000,diffvar=False,maxpatience = 20,lenM1=200,lenM2=1,lenH=500,numHlayers=1,verbose=False,bsize=32,numepochs=200,show=False,translate=False,corrN=[0,0],frobNorm=1,partialTranslate=False):
+NAIVE="naive"
+FULLTRANS="full"
+PARTIALTRANS="partial"
+ALL="all"
+
+
+def deep_regression_exp(numdata=1000,diffvar=False,maxpatience = 20,lenM1=200,lenM2=1,lenH=500,numHlayers=1,verbose=False,bsize=32,numepochs=200,show=False,corrN=[0,0],frobNorm=1,bimodal=NAIVE):
   numtrain = int(0.9*numdata)
   numtest = numdata - numtrain
   numval = numtest
@@ -187,128 +193,161 @@ def deep_regression_exp(numdata=1000,diffvar=False,maxpatience = 20,lenM1=200,le
   testloss1 = testloss / numtest
   if verbose: print("testloss1",testloss1)
 
-  # experimental model
-  if verbose: print("bimodal")
-  model = Deep_Regression(lenM1,lenM2,lenH,numHlayers=numHlayers).cuda()
-  optimizer = torch.optim.SGD(model.parameters(), momentum=0.9, nesterov=True, lr=0.001)
-  traindata2 = [] if (show or diffvar) else None
-  if translate:
+  # experimental models
+  def traintest(bimodal,controltraindata=traindata):
+    traindata = list(controltraindata) if controltraindata else None
+    m2zeros_test = torch.ones((numtest,lenM2)).double().cuda()*trainm2.mean(axis=0)
+    if verbose: print(bimodal)
+    model = Deep_Regression(lenM1,lenM2,lenH,numHlayers=numHlayers).cuda()
+    optimizer = torch.optim.SGD(model.parameters(), momentum=0.9, nesterov=True, lr=0.001)
+    traindata2 = [] if (show or diffvar) else None
+
+    hatbetatrans = None
     with torch.no_grad():
-      if not partialTranslate:
+      if bimodal==PARTIALTRANS:
+        if corrpresent:
+          term1 = trainm1[:,:corrN[0]]
+          term2 = trainm2[:,:corrN[1]]
+          
+          hatbetatrans = \
+            (term1.t() @ term1).inverse() @ term1.t() @ term2
+      elif bimodal==FULLTRANS:
         term1 = trainm1
         term2 = trainm2
-      else:
-        term1 = trainm1[:,:corrN[0]]
-        term2 = trainm2[:,:corrN[1]]
-     
-      hatbetatrans = \
-        (term1.t() @ term1).inverse() @ term1.t() @ term2
-  else: hatbetatrans = None
-  train_dr(model,optimizer,trainm1,trainm2,trainy,
-        maxpatience=maxpatience,
-        numval=numval,testset=(testm1,m2zeros_test,testy),
-        bsize=bsize,verbose=verbose,numepochs=numepochs,datastore=traindata2,translate=hatbetatrans)
+               
+        hatbetatrans = \
+          (term1.t() @ term1).inverse() @ term1.t() @ term2
+    train_dr(model,optimizer,trainm1,trainm2,trainy,
+          maxpatience=maxpatience,
+          numval=numval,testset=(testm1,m2zeros_test,testy),
+          bsize=bsize,verbose=verbose,numepochs=numepochs,datastore=traindata2,translate=hatbetatrans)
 
-  model.eval()
-  with torch.no_grad(): 
-    m2zeros_test = torch.ones((testm1.shape[0],trainm2.shape[1])).double().cuda()*trainm2.mean(axis=0)
+    model.eval()
+    with torch.no_grad(): 
+      m2zeros_test = torch.ones((testm1.shape[0],trainm2.shape[1])).double().cuda()*trainm2.mean(axis=0)
+      
+      if hatbetatrans is not None: 
+        m2zeros_test[:,:hatbetatrans.shape[1]] = testm1[:,:hatbetatrans.shape[0]] @ hatbetatrans
+
+      testps = model.forward(testm1,m2zeros_test)
+      testloss = ((testps - testy)**2).sum().cpu().numpy()
+
+    testloss2 = testloss / numtest
     
-    if translate: 
-      m2zeros_test[:,:hatbetatrans.shape[1]] = testm1[:,:hatbetatrans.shape[0]] @ hatbetatrans
-
-    testps = model.forward(testm1,m2zeros_test)
-    testloss = ((testps - testy)**2).sum().cpu().numpy()
-
-  testloss2 = testloss / numtest
-  
-  traindata = np.array(traindata)
-  traindata2 = np.array(traindata2)
-  
-  if diffvar: difftestvar = traindata[:,1].var()-traindata2[:,1].var()
-
-  if verbose:
-    print("testloss2",testloss2)
-    print("benefit",testloss1-testloss2)
-    if diffvar: print("difftestvar",difftestvar)
-
-  if show:
-    # plot the training curves
-
-    fig, ax1 = plt.subplots()
-
-    ax1.set_xlabel('epoch')
-    ax1.set_ylabel('training loss per sample')
-    controltrain, = ax1.plot(traindata[:,0], color = 'red')
-    bitrain, = ax1.plot(traindata2[:,0], color='blue')
-    ax1.tick_params(axis='y')
-
-    # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-    # ax2.set_ylabel('testing loss per sample')  # we already handled the x-label with ax1
-    controltest, = ax1.plot(traindata[:,1], color = 'orange')
-    bitest, = ax1.plot(traindata2[:,1], color='cyan')
-    # ax2.tick_params(axis='y')
-
-    fig.tight_layout()  # otherwise the right y-label is slightly clipped
-    plt.legend((controltrain,bitrain,controltest,bitest),('control val','bimodal val','control testing','bimodal testing'))
-    # plt.savefig("figs/"+str(random.random())[2:]+".jpg")
-    plt.show()
-    plt.clf()
-
-    # plot the fourier transform
-    plt.ylabel('amplitude')
-    plt.xlabel('frequency (1/epoch)')
+    if diffvar or show:
+      traindata = np.array(traindata)
+      traindata2 = np.array(traindata2)
     
-    N = len(traindata[:,1])
-    yfuni = scipy.fftpack.fft(traindata[:,1])
-    xf = np.linspace(0,1/2,N/2)
-    yfuni = 2/N*np.abs(yfuni[:len(xf)])
-    plt.plot(xf,yfuni,color='orange',label="control testing")
+    if diffvar: difftestvar = traindata[:,1].var()-traindata2[:,1].var()
 
-    N = len(traindata2[:,1])
-    yfbi = scipy.fftpack.fft(traindata2[:,1])
-    xf = np.linspace(0,1/2,N/2)
-    yfbi = 2/N*np.abs(yfbi[:len(xf)])
-    plt.plot(xf,yfbi,color="cyan",label="bimodal testing")
-    plt.legend()
-    plt.show()
-    pdb.set_trace()
+    if verbose:
+      print("testloss2",testloss2)
+      print("benefit",testloss1-testloss2)
+      if diffvar: print("difftestvar",difftestvar)
 
+    if show:
+      # plot the training curves
 
-  return [testloss1-testloss2,testloss1] if not diffvar else [testloss1-testloss2,testloss1,difftestvar] 
+      fig, ax1 = plt.subplots()
+
+      ax1.set_xlabel('epoch')
+      ax1.set_ylabel('training loss per sample')
+      controltrain, = ax1.plot(traindata[:,0], color = 'red')
+      bitrain, = ax1.plot(traindata2[:,0], color='blue')
+      ax1.tick_params(axis='y')
+
+      # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+
+      # ax2.set_ylabel('testing loss per sample')  # we already handled the x-label with ax1
+      controltest, = ax1.plot(traindata[:,1], color = 'orange')
+      bitest, = ax1.plot(traindata2[:,1], color='cyan')
+      # ax2.tick_params(axis='y')
+
+      fig.tight_layout()  # otherwise the right y-label is slightly clipped
+      plt.legend((controltrain,bitrain,controltest,bitest),('control val','bimodal val','control testing','bimodal testing'))
+      # plt.savefig("figs/"+str(random.random())[2:]+".jpg")
+      plt.show()
+      plt.clf()
+
+      # plot the fourier transform
+      plt.ylabel('amplitude')
+      plt.xlabel('frequency (1/epoch)')
+      
+      N = len(traindata[:,1])
+      yfuni = scipy.fftpack.fft(traindata[:,1])
+      xf = np.linspace(0,1/2,N/2)
+      yfuni = 2/N*np.abs(yfuni[:len(xf)])
+      plt.plot(xf,yfuni,color='orange',label="control testing")
+
+      N = len(traindata2[:,1])
+      yfbi = scipy.fftpack.fft(traindata2[:,1])
+      xf = np.linspace(0,1/2,N/2)
+      yfbi = 2/N*np.abs(yfbi[:len(xf)])
+      plt.plot(xf,yfbi,color="cyan",label="bimodal testing")
+      plt.legend()
+      plt.show()
+      pdb.set_trace()
+
+    return testloss2
+
+  if bimodal!=ALL: 
+    testloss2 = traintest(bimodal)
+    return [testloss1-testloss2,testloss1,(testloss1-testloss2)/testloss1]
+  else:
+    rs = []
+    for bimodal in [NAIVE,FULLTRANS,PARTIALTRANS]:
+      loss = traintest(bimodal)
+      benefit = testloss1 - loss
+      rs.append(benefit / testloss1)
+    results = [testloss1]
+    results.extend(rs)
+    return results
 
 if __name__ == '__main__':
-  xlabels = ["mm benefit","testloss1"]
+  # xlabels = ["mm benefit","testloss1","benefit ratio"]
+  xlabels = ["testloss1","naive benefit ratio","full trans benefit ratio","partial trans benefit ratio"]
 
-  numits=100
+  numits=30
   numdata=10000
-  translate=True
+  bimodal=ALL
+  alldata = []
 
-  for frobNorm in np.linspace(0,4,num=10,endpoint=False):
-    # if frobNorm<=1: continue
-    print("#######\nfrobNorm "+str(frobNorm))
-    lenM1=100
-    lenM2=10
-    lenH = 100
-    actualH = 10
-    numHlayers = 1
+  # for frobNorm in np.linspace(0,4,num=10,endpoint=False):
+  for numHlayers in [2,8,16]:
+    for frobNorm in [0.5,2,10]:
+      # if frobNorm<=0: continue
+      print("#######\nfrobNorm "+str(frobNorm))
+      r2 = 4
 
-    corrN=[lenM1,lenM2]
+      lenM1=100
+      lenM2=10
+      lenH = 100
+      actualH = 10
+      
+      numHlayers = 4
+      frobNorm = 0.5
 
-    name="frobInc_"+str(lenM1)+"_"+str(lenM2)+"_"+str(lenH)+"_"+str(actualH)+"_"+str(numHlayers)+"_"+str(frobNorm)+"_"+str(translate)
+      corrN=[lenM1,r2]
 
-    print(name)
+      name="frobInc_"+bimodal+str(lenM1)+"_"+str(lenM2)+"_"+str(lenH)+"_"+str(actualH)+"_"+str(numHlayers)+"_"+str(frobNorm)+"_"+str(corrN)
 
-    bsize=32
-    numepochs=400
-    maxpatience = 20
+      print(name)
 
-    show = False
-    def fn(show=show):
-      genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
-      return deep_regression_exp(numdata=numdata,diffvar=False,maxpatience=maxpatience,lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show,translate=translate,corrN=corrN,frobNorm=frobNorm)
-    # fn(True)
-    plotnames=[name+"benefit",name+"loss"]
-    savedata = name
-    data = getdata(fn,numits=numits,savedata=savedata)
-    plot(data,xlabels=xlabels,plotnames=plotnames,savedata=savedata,show=False)
+      bsize=32
+      numepochs=400
+      maxpatience = 20
+
+      show = False
+      def fn(show=show):
+        genbetas_deep(lenM1,lenM2,actualH,numHlayers=numHlayers,save="drbetas.pk")
+        return deep_regression_exp(numdata=numdata,diffvar=False,maxpatience=maxpatience,lenM1=lenM1,lenM2=lenM2,lenH=lenH,numHlayers=numHlayers,verbose=True,bsize=bsize,numepochs=numepochs,show=show,corrN=corrN,frobNorm=frobNorm,bimodal=bimodal)
+      # fn(True)
+      # plotnames=[name+"benefit",name+"loss",name+"ratio"]
+      plotnames=[name+"loss",name+NAIVE+" ratio",name+FULLTRANS+" ratio",name+PARTIALTRANS+" ratio"]
+      savedata = name
+      data = getdata(fn,numits=numits,savedata=savedata,seep=False)
+      plot(data,xlabels=xlabels,plotnames=plotnames,savedata=savedata,show=False)
+      alldata.append(data)
+
+  with open("data/frobInc_"+bimodal+".pk","wb") as f:
+    pk.dump(alldata,f)
